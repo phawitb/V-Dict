@@ -29,7 +29,10 @@ app.use(cors({
 app.use(express.json());
 
 // ── MongoDB ──────────────────────────────────────────────────────────────────
-const client = new MongoClient(process.env.MONGODB_URI);
+const client = new MongoClient(process.env.MONGODB_URI, {
+  tls: true,
+  serverSelectionTimeoutMS: 5000,
+});
 let wordsCol;
 let vocabBankCol;
 let dailyCol;
