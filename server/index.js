@@ -466,6 +466,9 @@ app.delete('/api/admin/admins/:email', requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/health  (used by uptime monitors to keep server awake)
+app.get('/api/health', (_, res) => res.json({ ok: true }));
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 connectDB().then(() => {
   app.listen(PORT, () => console.log(`🚀 Server on http://localhost:${PORT}`));
