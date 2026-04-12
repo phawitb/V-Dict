@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#4f46e5"/>
+  <rect x="120" y="110" width="272" height="292" rx="24" fill="white" opacity="0.15"/>
+  <rect x="136" y="126" width="240" height="260" rx="16" fill="white"/>
+  <rect x="160" y="170" width="192" height="18" rx="9" fill="#4f46e5" opacity="0.7"/>
+  <rect x="160" y="206" width="148" height="14" rx="7" fill="#4f46e5" opacity="0.4"/>
+  <rect x="160" y="234" width="168" height="14" rx="7" fill="#4f46e5" opacity="0.4"/>
+  <rect x="160" y="262" width="128" height="14" rx="7" fill="#4f46e5" opacity="0.4"/>
+  <circle cx="334" cy="346" r="62" fill="#4f46e5"/>
+  <text x="334" y="368" font-size="64" font-family="system-ui,sans-serif" font-weight="900" text-anchor="middle" fill="white">AI</text>
+</svg>

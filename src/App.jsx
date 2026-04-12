@@ -3,7 +3,7 @@ import {
   Search, Volume2, Trash2, BookOpen, Layers, Edit3, Type, CheckCircle,
   RefreshCw, AlertCircle, Loader2, Sun, Book, Lightbulb, Clock, ChevronDown,
   User, Trophy, Delete, Sparkles, Flame, Brain, RotateCcw, LogOut,
-  Settings, Shield, Eye, EyeOff, Plus, X,
+  Settings, Shield, Eye, EyeOff, Plus, X, Bookmark, BookmarkCheck,
 } from 'lucide-react';
 import { GoogleLogin, googleLogout } from '@react-oauth/google';
 
@@ -190,6 +190,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('find');
   const [loading, setLoading]     = useState(true);
   const [isAdmin, setIsAdmin]     = useState(false);
+  const [headerTitle, setHeaderTitle] = useState(null);
+
+  const TAB_TITLES = { find: 'Find Word', vocabs: 'My Vocabs', learning: 'Learn', wotd: 'Daily', profile: 'Profile', admin: 'Admin' };
+  const switchTab = (tab) => { setActiveTab(tab); setHeaderTitle(null); };
 
   // Load words when user is available
   useEffect(() => {
@@ -263,7 +267,7 @@ export default function App() {
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <h1 className="text-xl font-bold flex items-center gap-2">
             <BookOpen className="w-5 h-5" />
-            My Dict
+            {headerTitle || TAB_TITLES[activeTab] || 'My Dict'}
           </h1>
           <div className="flex items-center gap-2">
             {user.picture && (
@@ -278,20 +282,20 @@ export default function App() {
       <main className="max-w-4xl mx-auto p-4 md:mt-4 w-full flex-1 flex flex-col">
         {activeTab === 'find'     && <FindView    onSave={saveWordToDb} words={words} />}
         {activeTab === 'vocabs'   && <MyVocabsView words={words} onDelete={deleteWordFromDb} />}
-        {activeTab === 'learning' && <LearningView words={words} onUpdateWord={updateWordInDb} onSaveWord={saveWordToDb} dueCount={dueCount} userId={user.sub} />}
+        {activeTab === 'learning' && <LearningView words={words} onUpdateWord={updateWordInDb} onSaveWord={saveWordToDb} dueCount={dueCount} userId={user.sub} onTitleChange={setHeaderTitle} />}
         {activeTab === 'wotd'     && <WordOfTheDayView onSave={saveWordToDb} savedWords={words} />}
-        {activeTab === 'profile'  && <ProfileView words={words} user={user} onLogout={handleLogout} />}
+        {activeTab === 'profile'  && <ProfileView words={words} user={user} onLogout={handleLogout} isAdmin={isAdmin} onAdminClick={() => switchTab('admin')} />}
         {activeTab === 'admin'    && isAdmin && <AdminView user={user} />}
       </main>
 
       {/* Bottom Nav — always fixed */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-20 safe-bottom">
         <div className="flex justify-around items-center max-w-4xl mx-auto p-2">
-          <NavButton icon={<Book />}   label="Vocabs"  active={activeTab === 'vocabs'}   onClick={() => setActiveTab('vocabs')} />
-          <NavButton icon={<Layers />} label="Learn"   active={activeTab === 'learning'} onClick={() => setActiveTab('learning')} badge={dueCount > 0 ? dueCount : null} />
+          <NavButton icon={<Book />}   label="Vocabs"  active={activeTab === 'vocabs'}   onClick={() => switchTab('vocabs')} />
+          <NavButton icon={<Layers />} label="Learn"   active={activeTab === 'learning'} onClick={() => switchTab('learning')} badge={dueCount > 0 ? dueCount : null} />
 
           <button
-            onClick={() => setActiveTab('find')}
+            onClick={() => switchTab('find')}
             className={`flex items-center justify-center px-6 py-2.5 md:px-8 md:py-3 rounded-2xl shadow-sm transition-all duration-200 mx-1 ${
               activeTab === 'find' ? 'bg-indigo-600 text-white scale-105 shadow-indigo-200' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
             }`}
@@ -299,9 +303,8 @@ export default function App() {
             <Search className="w-6 h-6 md:w-7 md:h-7" />
           </button>
 
-          <NavButton icon={<Sun />}  label="Daily"   active={activeTab === 'wotd'}    onClick={() => setActiveTab('wotd')} />
-          <NavButton icon={<User />} label="Profile" active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
-          {isAdmin && <NavButton icon={<Shield />} label="Admin" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />}
+          <NavButton icon={<Sun />}  label="Daily"   active={activeTab === 'wotd'}    onClick={() => switchTab('wotd')} />
+          <NavButton icon={<User />} label="Profile" active={activeTab === 'profile' || activeTab === 'admin'} onClick={() => switchTab('profile')} />
         </div>
       </nav>
     </div>
@@ -412,14 +415,24 @@ function FindView({ onSave, words }) {
     Provide exactly 2 examples. If invalid, return {"error": "Invalid word"}.`;
 
     try {
-      // Check global cache first
       const key = word.trim().toLowerCase();
+
+      // Check global cache first
       const { found } = await api.checkCache([key]);
       let data = found[key] || null;
 
       if (!data) {
+        // Check vocab_bank — only look up words that exist in our list
+        const sugRes = await fetch(`${API_BASE}/api/suggest?q=${encodeURIComponent(key)}`);
+        const sugs   = await sugRes.json();
+        const inBank = sugs.some(s => s.word.toLowerCase() === key);
+        if (!inBank) {
+          setError('Word not in vocabulary list. Try another word.');
+          setLoading(false);
+          return;
+        }
         data = await callGeminiJSON(sys, `Dictionary details for: "${word.trim()}"`);
-        if (!data.error) api.saveCache([data]); // fire-and-forget
+        if (!data.error) api.saveCache([data]);
       }
 
       if (data.error) {
@@ -595,12 +608,11 @@ function MyVocabsView({ words, onDelete }) {
 
   return (
     <div className="space-y-4 animate-in fade-in max-w-xl mx-auto w-full">
-      <h2 className="text-lg font-bold text-slate-800 flex justify-between items-center mb-4">
-        <span>My Vocabs</span>
+      <div className="flex justify-end">
         <span className="text-xs font-medium bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full">
           {words.length} words
         </span>
-      </h2>
+      </div>
 
       <div className="space-y-2.5">
         {words.map(word => {
@@ -663,61 +675,62 @@ const LESSONS = [
   { key: 'kru_somsri', label: 'Kru Somsri', desc: 'Advanced Synonyms',  sub: '720 words', color: 'from-violet-500 to-purple-600', bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200', icon: '⭐' },
 ];
 
-function LearningView({ words, onUpdateWord, onSaveWord, dueCount, userId }) {
+function LearningView({ words, onUpdateWord, onSaveWord, dueCount, userId, onTitleChange }) {
   const [group, setGroup]   = useState(null);
   const [subTab, setSubTab] = useState('srs');
 
-  const selectGroup = (g) => { setGroup(g); setSubTab('flashcard'); };
+  const selectGroup = (g) => {
+    setGroup(g);
+    setSubTab('flashcard');
+    const meta = LESSONS.find(l => l.key === g);
+    onTitleChange?.(meta ? meta.label : 'My Vocabs');
+  };
+  const goBack = () => { setGroup(null); onTitleChange?.(null); };
 
   if (!group) {
     return (
       <div className="animate-in fade-in max-w-xl mx-auto w-full space-y-5">
-        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-          <Layers className="w-5 h-5 text-indigo-500" /> Choose a Group
-        </h2>
 
         {/* My Vocabs */}
         <button
           onClick={() => selectGroup('my_vocabs')}
-          className="w-full bg-white rounded-2xl shadow-sm border-2 border-indigo-200 hover:border-indigo-400 p-4 text-left transition-all hover:shadow-md group"
+          className="w-full bg-white rounded-2xl shadow-sm border-2 border-indigo-200 hover:border-indigo-400 p-3 text-left transition-all hover:shadow-md group"
         >
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-md flex-none">
-              <BookOpen className="w-7 h-7 text-white" />
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-md flex-none">
+              <BookOpen className="w-6 h-6 text-white" />
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <span className="font-bold text-base text-slate-800">My Vocabs</span>
+                <span className="font-bold text-sm text-slate-800">My Vocabs</span>
                 {dueCount > 0 && (
-                  <span className="bg-red-500 text-white text-xs font-black rounded-full px-2 py-0.5">{dueCount} due</span>
+                  <span className="bg-red-500 text-white text-[10px] font-black rounded-full px-1.5 py-0.5">{dueCount} due</span>
                 )}
               </div>
-              <p className="text-sm text-slate-500 mt-0.5">Saved vocabulary · Personal SRS</p>
-              <p className="text-xs text-indigo-500 font-medium mt-1">{words.length} words</p>
+              <p className="text-xs text-slate-500 mt-0.5">Saved vocabulary · Personal SRS · {words.length} words</p>
             </div>
-            <ChevronDown className="w-5 h-5 text-slate-300 -rotate-90 group-hover:text-indigo-400" />
+            <ChevronDown className="w-4 h-4 text-slate-300 -rotate-90 group-hover:text-indigo-400 flex-none" />
           </div>
         </button>
 
         {/* Lessons */}
         <div>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Lessons</p>
-          <div className="flex flex-col gap-3">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Lessons</p>
+          <div className="flex flex-col gap-2">
             {LESSONS.map(ls => (
               <button
                 key={ls.key}
                 onClick={() => selectGroup(ls.key)}
-                className={`rounded-2xl border-2 ${ls.border} ${ls.bg} p-4 text-left transition-all hover:shadow-md hover:scale-[1.01] group flex items-center gap-4`}
+                className={`rounded-2xl border-2 ${ls.border} ${ls.bg} p-3 text-left transition-all hover:shadow-md hover:scale-[1.01] group flex items-center gap-3`}
               >
-                <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${ls.color} flex items-center justify-center shadow-sm flex-none`}>
-                  <span className="text-2xl">{ls.icon}</span>
+                <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${ls.color} flex items-center justify-center shadow-sm flex-none`}>
+                  <span className="text-xl">{ls.icon}</span>
                 </div>
                 <div className="flex-1">
-                  <p className={`font-black text-base ${ls.text}`}>{ls.label}</p>
-                  <p className="text-sm text-slate-500">{ls.desc}</p>
-                  <p className={`text-xs font-medium mt-0.5 ${ls.text} opacity-70`}>{ls.sub}</p>
+                  <p className={`font-black text-sm ${ls.text}`}>{ls.label}</p>
+                  <p className={`text-xs mt-0.5 ${ls.text} opacity-70`}>{ls.desc} · {ls.sub}</p>
                 </div>
-                <ChevronDown className="w-5 h-5 text-slate-300 -rotate-90 group-hover:text-slate-400 flex-none" />
+                <ChevronDown className="w-4 h-4 text-slate-300 -rotate-90 group-hover:text-slate-400 flex-none" />
               </button>
             ))}
           </div>
@@ -733,7 +746,7 @@ function LearningView({ words, onUpdateWord, onSaveWord, dueCount, userId }) {
     <div className="space-y-4 animate-in fade-in flex flex-col h-full max-w-xl mx-auto w-full">
       {/* Header */}
       <div className="flex items-center gap-3 flex-none">
-        <button onClick={() => setGroup(null)} className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 shadow-sm">
+        <button onClick={goBack} className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 shadow-sm">
           <ChevronDown className="w-4 h-4 text-slate-500 rotate-90" />
         </button>
         {group === 'my_vocabs' ? (
@@ -1148,7 +1161,7 @@ function SRSReview({ words, onUpdateWord }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // ProfileView
 // ═════════════════════════════════════════════════════════════════════════════
-function ProfileView({ words, user, onLogout }) {
+function ProfileView({ words, user, onLogout, isAdmin, onAdminClick }) {
   const streak = useMemo(() => {
     if (!words.length) return 0;
     const uniqueDates = [...new Set(words.map(w => new Date(w.timestamp).toISOString().split('T')[0]))].sort((a, b) => b.localeCompare(a));
@@ -1265,6 +1278,14 @@ function ProfileView({ words, user, onLogout }) {
         </div>
       </div>
 
+      {isAdmin && (
+        <button
+          onClick={onAdminClick}
+          className="w-full py-3 flex items-center justify-center gap-2 text-sm font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-2xl border border-indigo-100 transition-colors"
+        >
+          <Shield className="w-4 h-4" /> Admin Panel
+        </button>
+      )}
     </div>
   );
 }
@@ -1351,15 +1372,7 @@ function AdminView({ user }) {
 
   return (
     <div className="animate-in fade-in space-y-6 max-w-xl mx-auto w-full">
-      <div className="flex items-center gap-3 mb-2">
-        <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
-          <Shield className="w-5 h-5 text-white" />
-        </div>
-        <div>
-          <h2 className="text-lg font-bold text-slate-800">Admin Panel</h2>
-          <p className="text-xs text-slate-400">{email}</p>
-        </div>
-      </div>
+      <p className="text-xs text-slate-400 -mt-2">{email}</p>
 
       {msg && (
         <div className="bg-indigo-50 text-indigo-700 text-sm font-medium px-4 py-2.5 rounded-xl border border-indigo-100 animate-in fade-in">
@@ -1431,7 +1444,7 @@ function AdminView({ user }) {
       </div>
 
       {/* Admin Management */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4 overflow-hidden">
         <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
           <Shield className="w-4 h-4 text-indigo-500" /> Admin Accounts
         </h3>
@@ -1515,11 +1528,6 @@ function WordOfTheDayView({ onSave, savedWords }) {
 
   return (
     <div className="space-y-5 animate-in fade-in flex flex-col h-full max-w-xl mx-auto w-full">
-      <div className="flex items-center gap-2 mb-2 flex-none">
-        <Sun className="text-amber-500 w-5 h-5" />
-        <h2 className="text-lg font-bold text-slate-800">5 Words of the Day</h2>
-      </div>
-
       <div className="flex overflow-x-auto gap-2 pb-1.5 hide-scrollbar flex-none">
         <SubTabButton label="Words"    active={dailyTab === 'words'}    onClick={() => setDailyTab('words')} />
         <SubTabButton label="Practice" active={dailyTab === 'practice'} onClick={() => setDailyTab('practice')} />
@@ -1548,6 +1556,13 @@ function WordOfTheDayView({ onSave, savedWords }) {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
+                      <button
+                        onClick={e => { e.stopPropagation(); if (!isSaved) onSave(w); }}
+                        className={`p-1.5 rounded-lg transition-colors ${isSaved ? 'text-green-500' : 'text-slate-400 hover:text-indigo-500 hover:bg-indigo-50'}`}
+                        title={isSaved ? 'Saved' : 'Save to My Vocabs'}
+                      >
+                        {isSaved ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
+                      </button>
                       <button onClick={e => { e.stopPropagation(); playAudio(w.word); }} className="p-1.5 text-indigo-500 hover:bg-indigo-100 rounded-lg">
                         <Volume2 className="w-4 h-4" />
                       </button>
