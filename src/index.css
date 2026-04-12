@@ -17,3 +17,14 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Prevent iOS overscroll bounce that leaves a white gap at the top */
+html {
+  background-color: #4f46e5; /* matches header indigo-600 */
+  overscroll-behavior-y: none;
+}
+
+body {
+  background-color: #f8fafc; /* slate-50 */
+  overscroll-behavior-y: none;
+}

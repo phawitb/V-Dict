@@ -263,7 +263,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-24 flex flex-col">
       {/* Header */}
-      <header className="bg-indigo-600 text-white p-3 shadow-md sticky top-0 z-10 flex-none">
+      <header className="bg-indigo-600 text-white p-3 shadow-md sticky top-0 z-50 flex-none">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <h1 className="text-xl font-bold flex items-center gap-2">
             <BookOpen className="w-5 h-5" />
