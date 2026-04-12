@@ -907,8 +907,8 @@ function LevelStudySession({ level, levelMeta, userId, onSaveWord, onUpdateWord,
                   {group[0]} – {group[group.length - 1]}
                 </p>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  {group.map(w => (
-                    <span key={w} className={`w-1.5 h-1.5 rounded-full ${savedSet.has(w.toLowerCase()) ? 'bg-green-400' : 'bg-slate-200'}`} />
+                  {[0,1,2,3,4].map(i => (
+                    <span key={i} className={`w-1.5 h-1.5 rounded-full ${practiceData?.level > i ? 'bg-green-400' : 'bg-slate-200'}`} />
                   ))}
                   {practiceData && (
                     <span className={`text-[10px] font-bold ml-1 ${doneToday ? levelMeta.text : 'text-slate-400'}`}>
@@ -933,7 +933,8 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
   const [words, setWords]     = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
-  const [stage, setStage]     = useState(0);
+  const [stage, setStage]         = useState(0);
+  const [stageScores, setStageScores] = useState([]);
 
   useEffect(() => {
     (async () => {
@@ -970,14 +971,24 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
     })();
   }, []);
 
-  const onComplete = () => {
+  const onComplete = (score = 0, total = 0) => {
+    const allScores   = [...stageScores, { score, total }];
+    const totalCorrect = allScores.reduce((s, x) => s + x.score, 0);
+    const totalQ       = allScores.reduce((s, x) => s + x.total, 0);
+    const level        = totalQ > 0 ? Math.round((totalCorrect / totalQ) * 5) : 0;
     localStorage.setItem(`sg_${lessonKey}_${groupIdx}_${userId}`, JSON.stringify({
       date: new Date().toISOString().split('T')[0],
+      score: totalCorrect,
+      total: totalQ,
+      level,
     }));
     onBack();
   };
 
-  const next = () => setStage(s => s + 1);
+  const next = (score = 0, total = 0) => {
+    if (total > 0) setStageScores(prev => [...prev, { score, total }]);
+    setStage(s => s + 1);
+  };
 
   if (loading) return (
     <div className="py-20 flex flex-col items-center gap-3">
@@ -2101,7 +2112,7 @@ function MultipleChoiceGame({ words, onNext }) {
   };
 
   if (!questions.length) return null;
-  if (showRes) return <ResultScreen score={score} total={questions.length} onRetry={gen} onNext={onNext} nextText="Go to Step 4" />;
+  if (showRes) return <ResultScreen score={score} total={questions.length} onRetry={gen} onNext={() => onNext(score, questions.length)} nextText="Go to Step 4" />;
 
   const q  = questions[cidx];
   const ok = selAns !== null;
@@ -2171,7 +2182,7 @@ function TypingGame({ words, onNext }) {
   };
 
   if (!questions.length) return null;
-  if (showRes) return <ResultScreen score={score} total={questions.length} onRetry={gen} onNext={onNext} nextText="Finish Practice" />;
+  if (showRes) return <ResultScreen score={score} total={questions.length} onRetry={gen} onNext={() => onNext(score, questions.length)} nextText="Finish Practice" />;
 
   const q = questions[cidx];
 
@@ -2231,7 +2242,7 @@ function DailyWordle({ word, user }) {
 
   // Load history (last 7 days)
   useEffect(() => {
-    fetch(`${API_BASE}/api/wordle/history?limit=7`)
+    fetch(`${API_BASE}/api/wordle/history?limit=20`)
       .then(r => r.json())
       .then(days => setHistory(days))
       .catch(() => {});
@@ -2435,11 +2446,11 @@ function WordleGame({ word, date, onGameEnd }) {
       <div className="space-y-1.5 px-1">
         {['qwertyuiop', 'asdfghjkl', 'zxcvbnm'].map((row, i) => (
           <div key={i} className="flex justify-center gap-1">
-            {i === 2 && <button onClick={() => handleKey('Enter')} className="px-2 py-3.5 bg-slate-200 text-slate-700 text-[10px] font-bold rounded hover:bg-slate-300">ENTER</button>}
+            {i === 2 && <button onClick={() => handleKey('Backspace')} className="px-2 py-3.5 bg-slate-200 text-slate-700 font-bold rounded hover:bg-slate-300"><Delete className="w-4 h-4 mx-auto" /></button>}
             {row.split('').map(k => (
               <button key={k} onClick={() => handleKey(k)} className={`flex-1 py-3.5 text-xs font-bold uppercase rounded shadow-sm transition-colors ${keyColors[k] ?? 'bg-slate-200 hover:bg-slate-300 text-slate-700'}`}>{k}</button>
             ))}
-            {i === 2 && <button onClick={() => handleKey('Backspace')} className="px-2 py-3.5 bg-slate-200 text-slate-700 font-bold rounded hover:bg-slate-300"><Delete className="w-4 h-4 mx-auto" /></button>}
+            {i === 2 && <button onClick={() => handleKey('Enter')} className="px-2 py-3.5 bg-slate-200 text-slate-700 text-[10px] font-bold rounded hover:bg-slate-300">ENTER</button>}
           </div>
         ))}
       </div>
@@ -2448,9 +2459,11 @@ function WordleGame({ word, date, onGameEnd }) {
 }
 
 function WordleLeaderboard({ leaderboard, date, user }) {
-  const medals = ['🥇', '🥈', '🥉'];
-  const today  = new Date().toISOString().split('T')[0];
+  const medals    = ['🥇', '🥈', '🥉'];
+  const today     = new Date().toISOString().split('T')[0];
   const dateLabel = date === today ? 'Today' : new Date(date + 'T00:00:00').toLocaleDateString('en', { month: 'long', day: 'numeric', year: 'numeric' });
+  const winCount  = leaderboard.filter(e => e.won).length;
+  const winPct    = leaderboard.length > 0 ? Math.round(winCount / leaderboard.length * 100) : 0;
 
   if (!leaderboard.length) {
     return (
@@ -2464,7 +2477,7 @@ function WordleLeaderboard({ leaderboard, date, user }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
       <div className="bg-indigo-50 border-b border-indigo-100 px-4 py-3">
-        <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider">{dateLabel} · {leaderboard.length} players</p>
+        <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider">{dateLabel} · {leaderboard.length} players · {winPct}% won</p>
       </div>
       <div className="divide-y divide-slate-100">
         {leaderboard.map((entry, i) => {
