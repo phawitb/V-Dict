@@ -262,8 +262,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-24 flex flex-col">
-      {/* Header */}
-      <header className="bg-indigo-600 text-white shadow-md sticky top-0 z-50 flex-none" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+      {/* Header — fixed so it always sits flush at the physical top of the screen */}
+      <header className="bg-indigo-600 text-white shadow-md fixed top-0 left-0 right-0 z-50" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <div className="max-w-4xl mx-auto flex items-center justify-between p-3">
           <h1 className="text-xl font-bold flex items-center gap-2">
             <BookOpen className="w-5 h-5" />
@@ -278,8 +278,8 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main */}
-      <main className="max-w-4xl mx-auto p-4 md:mt-4 w-full flex-1 flex flex-col">
+      {/* Main — top padding compensates for fixed header (≈52px) + safe-area */}
+      <main className="max-w-4xl mx-auto p-4 w-full flex-1 flex flex-col" style={{ paddingTop: 'calc(52px + env(safe-area-inset-top, 0px) + 1rem)' }}>
         {activeTab === 'find'     && <FindView    onSave={saveWordToDb} words={words} />}
         {activeTab === 'vocabs'   && <MyVocabsView words={words} onDelete={deleteWordFromDb} />}
         {activeTab === 'learning' && <LearningView words={words} onUpdateWord={updateWordInDb} onSaveWord={saveWordToDb} dueCount={dueCount} userId={user.sub} onTitleChange={setHeaderTitle} />}
