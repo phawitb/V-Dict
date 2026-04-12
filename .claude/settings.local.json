@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(curl -s \"https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSyCScEqKaNZX7xqIJmaSUjX9HhiUedaWzqw\")",
+      "Bash(python3 -c ':*)",
+      "Bash(node:*)",
+      "Bash(curl -s \"http://localhost:3001/api/suggest?q=app\")",
+      "Bash(python3 -c \"import json,sys; [print\\(d['word'], '-', d.get\\('pos',''\\)\\) for d in json.load\\(sys.stdin\\)]\")",
+      "Bash(xargs kill:*)",
+      "Bash(curl -s http://localhost:3001/api/suggest?q=app)",
+      "Bash(npx vite:*)",
+      "Bash(curl -s http://localhost:3001/api/suggest?q=test)",
+      "Bash(curl -s \"http://localhost:3001/api/daily\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s \"http://localhost:3001/api/level-words/word100?userId=test\")"
+    ]
+  }
+}
