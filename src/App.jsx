@@ -677,11 +677,9 @@ const LESSONS = [
 
 function LearningView({ words, onUpdateWord, onSaveWord, dueCount, userId, onTitleChange }) {
   const [group, setGroup]   = useState(null);
-  const [subTab, setSubTab] = useState('srs');
 
   const selectGroup = (g) => {
     setGroup(g);
-    setSubTab('flashcard');
     const meta = LESSONS.find(l => l.key === g);
     onTitleChange?.(meta ? meta.label : 'My Vocabs');
   };
@@ -756,42 +754,102 @@ function LearningView({ words, onUpdateWord, onSaveWord, dueCount, userId, onTit
     );
   }
 
-  // My Vocabs: keep existing tabs
+  // My Vocabs: sub-group navigation (same as lesson)
   return (
-    <div className="space-y-4 animate-in fade-in flex flex-col h-full max-w-xl mx-auto w-full">
-      {/* Header */}
-      <div className="flex items-center gap-3 flex-none">
-        <button onClick={goBack} className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 shadow-sm">
+    <MyVocabsSession
+      words={words}
+      userId={userId}
+      onUpdateWord={onUpdateWord}
+      onSaveWord={onSaveWord}
+      onBack={goBack}
+      dueCount={dueCount}
+    />
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MyVocabsSession — personal vocab sub-group navigation (same as lesson)
+// ═════════════════════════════════════════════════════════════════════════════
+const MY_VOCABS_META = { label: 'My Vocabs', color: 'from-indigo-500 to-violet-600', bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-700', icon: '📚' };
+
+function MyVocabsSession({ words, userId, onUpdateWord, onSaveWord, onBack, dueCount }) {
+  const [activeGroup, setActiveGroup] = useState(null);
+
+  const subGroups = useMemo(() => {
+    const groups = [];
+    for (let i = 0; i < words.length; i += 5) groups.push(words.slice(i, i + 5));
+    return groups;
+  }, [words]);
+
+  if (activeGroup !== null) {
+    const group = subGroups[activeGroup];
+    return (
+      <SubGroupPractice
+        key={`my_vocabs-${activeGroup}`}
+        groupWords={group.map(w => w.word)}
+        initialWords={group}
+        groupIdx={activeGroup}
+        lessonKey="my_vocabs"
+        levelMeta={MY_VOCABS_META}
+        userId={userId}
+        savedWords={words}
+        onSaveWord={onSaveWord}
+        onUpdateWord={onUpdateWord}
+        onBack={() => setActiveGroup(null)}
+      />
+    );
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+
+  return (
+    <div className="space-y-4 animate-in fade-in max-w-xl mx-auto w-full">
+      <div className="flex items-center gap-3">
+        <button onClick={onBack} className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 shadow-sm flex-none">
           <ChevronDown className="w-4 h-4 text-slate-500 rotate-90" />
         </button>
-        <div className="flex items-center gap-2">
-          <BookOpen className="w-5 h-5 text-indigo-600" />
-          <span className="font-bold text-slate-800">My Vocabs</span>
-          <span className="text-xs text-slate-400">({words.length} words)</span>
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <span className={`px-2.5 py-1 rounded-xl bg-gradient-to-br ${MY_VOCABS_META.color} text-white font-black text-sm shadow-sm flex-none`}>📚</span>
+          <div className="min-w-0">
+            <p className="font-bold text-slate-800 text-sm">My Vocabs</p>
+            <p className="text-xs text-slate-400">{words.length} words · {subGroups.length} groups{dueCount > 0 ? ` · ${dueCount} due` : ''}</p>
+          </div>
         </div>
       </div>
 
-      {/* Sub-tabs */}
-      <div className="overflow-x-auto hide-scrollbar flex-none">
-        <div className="flex gap-2 pt-2 pb-1">
-          <SubTabButton label="Flashcards"    active={subTab === 'flashcard'} onClick={() => setSubTab('flashcard')} />
-          <SubTabButton label="Matching"      active={subTab === 'matching'}  onClick={() => setSubTab('matching')} />
-          <SubTabButton label="Choices"       active={subTab === 'choice'}    onClick={() => setSubTab('choice')} />
-          <SubTabButton label="Typing"        active={subTab === 'typing'}    onClick={() => setSubTab('typing')} />
-          <SubTabButton label="✨ AI Story"   active={subTab === 'story'}     onClick={() => setSubTab('story')} />
-          <SubTabButton label="🧠 SRS Review" active={subTab === 'srs'}       onClick={() => setSubTab('srs')} badge={dueCount > 0 ? dueCount : null} />
+      {words.length < 1 ? (
+        <NoWordsMessage />
+      ) : (
+        <div className="space-y-2">
+          {subGroups.map((group, idx) => {
+            const practiceData = (() => { try { return JSON.parse(localStorage.getItem(`sg_my_vocabs_${idx}_${userId}`)); } catch { return null; } })();
+            const doneToday    = practiceData?.date === today;
+            return (
+              <button key={idx} onClick={() => setActiveGroup(idx)}
+                className={`w-full rounded-xl border p-3 text-left transition-all hover:shadow-md flex items-center gap-3 ${doneToday ? `${MY_VOCABS_META.bg} ${MY_VOCABS_META.border}` : 'bg-white border-slate-200 hover:border-indigo-200'}`}
+              >
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm font-black flex-none ${doneToday ? `bg-gradient-to-br ${MY_VOCABS_META.color} text-white` : 'bg-slate-100 text-slate-500'}`}>
+                  {idx + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-slate-700 truncate">{group[0]?.word} – {group[group.length - 1]?.word}</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {[0,1,2,3,4].map(i => (
+                      <span key={i} className={`w-1.5 h-1.5 rounded-full ${practiceData?.level > i ? 'bg-green-400' : 'bg-slate-200'}`} />
+                    ))}
+                    {practiceData && (
+                      <span className={`text-[10px] font-bold ml-1 ${doneToday ? MY_VOCABS_META.text : 'text-slate-400'}`}>
+                        {doneToday ? '✓ Today' : practiceData.date}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <ChevronDown className="w-4 h-4 text-slate-300 -rotate-90 flex-none" />
+              </button>
+            );
+          })}
         </div>
-      </div>
-
-      {/* Content */}
-      <div className="mt-1 flex-1">
-        {subTab === 'srs'       && <SRSReview words={words} onUpdateWord={onUpdateWord} />}
-        {subTab === 'story'     && <AIStoryGame words={words} />}
-        {subTab === 'flashcard' && <FlashcardGame words={words} />}
-        {subTab === 'matching'  && <MatchingGame words={words} />}
-        {subTab === 'choice'    && <MultipleChoiceGame words={words} />}
-        {subTab === 'typing'    && <TypingGame words={words} />}
-      </div>
+      )}
     </div>
   );
 }
@@ -853,6 +911,7 @@ function LevelStudySession({ level, levelMeta, userId, onSaveWord, onUpdateWord,
           }
           return saved;
         }}
+        onUpdateWord={onUpdateWord}
         onBack={() => setActiveGroup(null)}
       />
     );
@@ -927,9 +986,73 @@ function LevelStudySession({ level, levelMeta, userId, onSaveWord, onUpdateWord,
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// SubGroupAIStory — auto-loads/generates shared AI story for sub-group
+// ═════════════════════════════════════════════════════════════════════════════
+function SubGroupAIStory({ words, onNext }) {
+  const [story, setStory]   = useState(null);
+  const [loading, setLoading] = useState(true);
+  const storyKey = useMemo(() => words.map(w => w.word.toLowerCase()).sort().join(','), [words]);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const r = await fetch(`${API_BASE}/api/story?key=${encodeURIComponent(storyKey)}`);
+        const cached = await r.json();
+        if (cached?.englishStory) { setStory(cached); return; }
+        const sys = `You are a creative storyteller. Write a short story (3-4 sentences) using exactly all requested words.
+        Wrap vocab words in <b> tags in English. Thai translation needs no tags.
+        Return ONLY: { "title": "string", "englishStory": "string", "thaiTranslation": "string" }`;
+        const d = await callGeminiJSON(sys, `Story using: ${words.map(w => w.word).join(', ')}`);
+        if (d?.englishStory) {
+          await fetch(`${API_BASE}/api/story`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: storyKey, ...d }),
+          });
+          setStory(d);
+        }
+      } catch (e) { console.error(e); }
+      finally { setLoading(false); }
+    })();
+  }, [storyKey]);
+
+  if (loading) return (
+    <div className="py-16 flex flex-col items-center gap-3">
+      <Loader2 className="w-8 h-8 animate-spin text-violet-500" />
+      <p className="text-sm text-slate-500 animate-pulse">✨ Generating story…</p>
+    </div>
+  );
+
+  if (!story) return (
+    <div className="text-center py-8">
+      <p className="text-red-500 text-sm mb-4">Failed to load story</p>
+      <button onClick={onNext} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">Skip</button>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4 animate-in fade-in">
+      <div className="bg-gradient-to-br from-indigo-50 to-violet-50 p-5 rounded-2xl border border-indigo-100 shadow-inner">
+        <h3 className="text-lg font-bold text-indigo-800 text-center mb-4 pb-3 border-b border-indigo-200/50 flex items-center justify-center gap-2">
+          <Sparkles className="w-5 h-5" /> {story.title}
+        </h3>
+        <p className="text-slate-800 text-base leading-relaxed mb-4"><HighlightedText text={story.englishStory} /></p>
+        <div className="bg-white/60 p-4 rounded-xl border border-indigo-100/50">
+          <p className="text-slate-600 text-sm leading-relaxed">{story.thaiTranslation}</p>
+        </div>
+      </div>
+      <button onClick={onNext} className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 text-sm">
+        Continue to SRS Review →
+      </button>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // SubGroupPractice — practice a group of 5 words through 4 stages
 // ═════════════════════════════════════════════════════════════════════════════
-function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, savedWords, onSaveWord, onBack }) {
+function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, savedWords, onSaveWord, onUpdateWord, onBack, initialWords }) {
   const [words, setWords]     = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
@@ -937,6 +1060,11 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
   const [stageScores, setStageScores] = useState([]);
 
   useEffect(() => {
+    if (initialWords?.length) {
+      setWords(initialWords.filter(Boolean));
+      setLoading(false);
+      return;
+    }
     (async () => {
       setLoading(true);
       try {
@@ -1010,7 +1138,9 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
     { label: 'Step 1: Flashcards',      icon: <Layers className="w-4 h-4" />,       el: <FlashcardGame      words={words} onNext={next} /> },
     { label: 'Step 2: Match',           icon: <RefreshCw className="w-4 h-4" />,     el: <MatchingGame       words={words} onNext={next} /> },
     { label: 'Step 3: Multiple Choice', icon: <CheckCircle className="w-4 h-4" />,   el: <MultipleChoiceGame words={words} onNext={next} /> },
-    { label: 'Step 4: Fill in Blank',   icon: <Edit3 className="w-4 h-4" />,         el: <TypingGame         words={words} onNext={onComplete} /> },
+    { label: 'Step 4: Fill in Blank',   icon: <Edit3 className="w-4 h-4" />,         el: <TypingGame         words={words} onNext={next} /> },
+    { label: 'Step 5: AI Story',        icon: <Sparkles className="w-4 h-4" />,      el: <SubGroupAIStory    words={words} onNext={next} /> },
+    { label: 'Step 6: SRS Review',      icon: <Brain className="w-4 h-4" />,         el: <SRSReview          words={words} onUpdateWord={onUpdateWord} onNext={onComplete} forceAll /> },
   ];
 
   return (
@@ -1050,10 +1180,10 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
 // ═════════════════════════════════════════════════════════════════════════════
 // SRS Review
 // ═════════════════════════════════════════════════════════════════════════════
-function SRSReview({ words, onUpdateWord }) {
+function SRSReview({ words, onUpdateWord, onNext, forceAll }) {
   const now = Date.now();
   const dueWords = useMemo(
-    () => words.filter(w => !w.srs || w.srs.nextReview <= now).sort(() => Math.random() - 0.5),
+    () => (forceAll ? [...words] : words.filter(w => !w.srs || w.srs.nextReview <= now)).sort(() => Math.random() - 0.5),
     // intentionally run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -1083,6 +1213,11 @@ function SRSReview({ words, onUpdateWord }) {
           <p className="text-xs text-indigo-500 font-medium mt-3 bg-indigo-50 px-4 py-2 rounded-full inline-block">
             Next review: {new Date(next).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
           </p>
+        )}
+        {onNext && (
+          <button onClick={onNext} className="mt-4 px-5 py-2.5 bg-green-600 text-white text-sm font-bold rounded-xl hover:bg-green-700 shadow-sm">
+            Continue ✓
+          </button>
         )}
       </div>
     );
@@ -1140,6 +1275,11 @@ function SRSReview({ words, onUpdateWord }) {
         >
           Review Again
         </button>
+        {onNext && (
+          <button onClick={onNext} className="w-full py-3 bg-green-600 text-white text-sm font-bold rounded-xl hover:bg-green-700 shadow-sm">
+            Complete ✓
+          </button>
+        )}
       </div>
     );
   }
@@ -2081,11 +2221,12 @@ function MatchingGame({ words, onNext }) {
 function MultipleChoiceGame({ words, onNext }) {
   if (words.length < 4) return <NoWordsMessage min={4} />;
 
-  const [questions, setQs]    = useState([]);
-  const [cidx, setCidx]       = useState(0);
-  const [score, setScore]     = useState(0);
-  const [showRes, setShowRes] = useState(false);
-  const [selAns, setSelAns]   = useState(null);
+  const [questions, setQs]      = useState([]);
+  const [cidx, setCidx]         = useState(0);
+  const [score, setScore]       = useState(0);
+  const [showRes, setShowRes]   = useState(false);
+  const [selAns, setSelAns]     = useState(null);
+  const [hintShown, setHintShown] = useState(-1);
 
   const gen = () => {
     const picked = [...words].sort(() => 0.5 - Math.random()).slice(0, Math.min(5, words.length));
@@ -2094,9 +2235,10 @@ function MultipleChoiceGame({ words, onNext }) {
       const plain   = exHtml.replace(/<\/?b>/gi, '');
       const blanked = plain.replace(new RegExp(`\\b${tw.word}\\b`, 'gi'), '________');
       const opts    = [tw.word, ...words.filter(w => w.word !== tw.word).sort(() => 0.5 - Math.random()).slice(0, 3).map(w => w.word)].sort(() => 0.5 - Math.random());
-      return { tw, sentence: blanked, opts };
+      const thHint  = (tw.examples?.[0]?.th || '').replace(/<b>(.*?)<\/b>/gi, '{$1}');
+      return { tw, sentence: blanked, opts, thHint };
     }));
-    setCidx(0); setScore(0); setShowRes(false); setSelAns(null);
+    setCidx(0); setScore(0); setShowRes(false); setSelAns(null); setHintShown(-1);
   };
 
   useEffect(gen, [words]);
@@ -2125,7 +2267,15 @@ function MultipleChoiceGame({ words, onNext }) {
       </div>
       <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 mb-6 text-center">
         <p className="text-base md:text-lg text-slate-800 font-medium leading-relaxed">"{q.sentence}"</p>
-        <p className="text-slate-500 mt-3 text-xs">Translation: {q.tw.examples?.[0]?.th}</p>
+        <div className="mt-3 h-7 flex items-center justify-center">
+          {hintShown !== cidx ? (
+            <button type="button" onClick={() => setHintShown(cidx)} className="flex items-center gap-1 text-xs font-medium text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg">
+              <Lightbulb className="w-3.5 h-3.5" /> Show Translation
+            </button>
+          ) : (
+            <p className="text-slate-500 text-xs animate-in fade-in">Translation: {q.thHint}</p>
+          )}
+        </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {q.opts.map((opt, i) => {
@@ -2338,10 +2488,12 @@ function WordleGame({ word, date, onGameEnd }) {
     } catch { return {}; }
   };
   const saved = load();
-  const [guesses, setGuesses] = useState(saved.guesses || []);
-  const [curr, setCurr]       = useState('');
-  const [status, setStatus]   = useState(saved.status || 'playing');
+  const [guesses, setGuesses]   = useState(saved.guesses || []);
+  const [curr, setCurr]         = useState('');
+  const [status, setStatus]     = useState(saved.status || 'playing');
   const [reported, setReported] = useState(saved.status === 'won' || saved.status === 'lost');
+  const [checking, setChecking] = useState(false);
+  const [invalidWord, setInvalidWord] = useState(false);
 
   // Persist state
   useEffect(() => {
@@ -2394,10 +2546,25 @@ function WordleGame({ word, date, onGameEnd }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [curr, status, target]);
 
-  const handleKey = (key) => {
-    if (status !== 'playing') return;
+  const handleKey = async (key) => {
+    if (status !== 'playing' || checking) return;
     if (key === 'Enter') {
       if (curr.length !== target.length) return;
+      // Validate word (skip if it's already the target)
+      if (curr.toLowerCase() !== target) {
+        setChecking(true);
+        try {
+          const r = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${curr.toLowerCase()}`);
+          if (!r.ok) {
+            setInvalidWord(true);
+            setTimeout(() => setInvalidWord(false), 1800);
+            setChecking(false);
+            return;
+          }
+        } catch { /* fail open on network error */ }
+        setChecking(false);
+      }
+      setInvalidWord(false);
       const ng = [...guesses, curr.toLowerCase()];
       setGuesses(ng);
       if (curr.toLowerCase() === target)  setStatus('won');
@@ -2436,6 +2603,16 @@ function WordleGame({ word, date, onGameEnd }) {
         })}
       </div>
 
+      {invalidWord && (
+        <div className="text-center p-2.5 rounded-xl mb-3 font-bold text-amber-700 bg-amber-50 border border-amber-200 text-sm animate-in zoom-in-95">
+          Not a valid English word!
+        </div>
+      )}
+      {checking && !invalidWord && (
+        <div className="text-center text-xs text-slate-400 mb-3 flex items-center justify-center gap-1.5">
+          <Loader2 className="w-3 h-3 animate-spin" /> Checking…
+        </div>
+      )}
       {status !== 'playing' && (
         <div className={`text-center p-4 rounded-xl mb-5 font-bold animate-in zoom-in-95 ${status === 'won' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
           {status === 'won' ? `🎉 Won in ${guesses.length}!` : `❌ Word was ${target.toUpperCase()}`}

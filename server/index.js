@@ -40,6 +40,7 @@ let wordCacheCol;
 let configCol;
 let adminsCol;
 let wordleScoresCol;
+let storiesCol;
 
 const INITIAL_ADMIN = 'phawit.boo@gmail.com';
 
@@ -55,6 +56,7 @@ async function connectDB() {
   adminsCol        = db.collection('admins');
 
   wordleScoresCol  = db.collection('wordle_scores');
+  storiesCol       = db.collection('stories');
 
   await wordsCol.createIndex({ userId: 1, word: 1 }, { unique: true });
   await wordCacheCol.createIndex({ word: 1 }, { unique: true });
@@ -62,6 +64,7 @@ async function connectDB() {
   await dailyCol.createIndex({ date: 1 }, { unique: true });
   await adminsCol.createIndex({ email: 1 }, { unique: true });
   await wordleScoresCol.createIndex({ date: 1, userId: 1 }, { unique: true });
+  await storiesCol.createIndex({ key: 1 }, { unique: true });
   await wordleScoresCol.createIndex({ date: 1, score: 1 });
 
   // Seed initial admin
@@ -312,6 +315,32 @@ app.post('/api/gemini', async (req, res) => {
     console.error(e);
     res.status(500).json({ error: e.message });
   }
+});
+
+// GET /api/story?key=word1,word2,...  (shared AI story cache)
+app.get('/api/story', async (req, res) => {
+  const { key } = req.query;
+  if (!key) return res.status(400).json({ error: 'key required' });
+  try {
+    const doc = await storiesCol.findOne({ key });
+    if (!doc) return res.json({});
+    const { _id, ...story } = doc;
+    res.json(story);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/story  { key, title, englishStory, thaiTranslation }
+app.post('/api/story', async (req, res) => {
+  const { key, title, englishStory, thaiTranslation } = req.body;
+  if (!key || !englishStory) return res.status(400).json({ error: 'key and englishStory required' });
+  try {
+    await storiesCol.updateOne(
+      { key },
+      { $setOnInsert: { key, title, englishStory, thaiTranslation, createdAt: Date.now() } },
+      { upsert: true },
+    );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // GET /api/wordle/history?limit=7
