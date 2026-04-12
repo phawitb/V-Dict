@@ -283,7 +283,7 @@ export default function App() {
         {activeTab === 'find'     && <FindView    onSave={saveWordToDb} words={words} />}
         {activeTab === 'vocabs'   && <MyVocabsView words={words} onDelete={deleteWordFromDb} />}
         {activeTab === 'learning' && <LearningView words={words} onUpdateWord={updateWordInDb} onSaveWord={saveWordToDb} dueCount={dueCount} userId={user.sub} onTitleChange={setHeaderTitle} />}
-        {activeTab === 'wotd'     && <WordOfTheDayView onSave={saveWordToDb} savedWords={words} />}
+        {activeTab === 'wotd'     && <WordOfTheDayView onSave={saveWordToDb} savedWords={words} user={user} />}
         {activeTab === 'profile'  && <ProfileView words={words} user={user} onLogout={handleLogout} isAdmin={isAdmin} onAdminClick={() => switchTab('admin')} />}
         {activeTab === 'admin'    && isAdmin && <AdminView user={user} />}
       </main>
@@ -742,6 +742,21 @@ function LearningView({ words, onUpdateWord, onSaveWord, dueCount, userId, onTit
   // ── Study session ──────────────────────────────────────────────────────────
   const levelMeta = LESSONS.find(l => l.key === group);
 
+  if (group !== 'my_vocabs') {
+    return (
+      <LevelStudySession
+        key={group}
+        level={group}
+        levelMeta={levelMeta}
+        userId={userId}
+        onSaveWord={onSaveWord}
+        onUpdateWord={onUpdateWord}
+        onBack={goBack}
+      />
+    );
+  }
+
+  // My Vocabs: keep existing tabs
   return (
     <div className="space-y-4 animate-in fade-in flex flex-col h-full max-w-xl mx-auto w-full">
       {/* Header */}
@@ -749,23 +764,14 @@ function LearningView({ words, onUpdateWord, onSaveWord, dueCount, userId, onTit
         <button onClick={goBack} className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 shadow-sm">
           <ChevronDown className="w-4 h-4 text-slate-500 rotate-90" />
         </button>
-        {group === 'my_vocabs' ? (
-          <div className="flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-indigo-600" />
-            <span className="font-bold text-slate-800">My Vocabs</span>
-            <span className="text-xs text-slate-400">({words.length} words)</span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <span className={`px-2.5 py-1 rounded-xl bg-gradient-to-br ${levelMeta.color} text-white font-black text-sm shadow-sm`}>
-              {levelMeta.icon} {levelMeta.label}
-            </span>
-            <span className="font-bold text-slate-800">{levelMeta.desc}</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <BookOpen className="w-5 h-5 text-indigo-600" />
+          <span className="font-bold text-slate-800">My Vocabs</span>
+          <span className="text-xs text-slate-400">({words.length} words)</span>
+        </div>
       </div>
 
-      {/* Sub-tabs — all groups same order */}
+      {/* Sub-tabs */}
       <div className="overflow-x-auto hide-scrollbar flex-none">
         <div className="flex gap-2 pt-2 pb-1">
           <SubTabButton label="Flashcards"    active={subTab === 'flashcard'} onClick={() => setSubTab('flashcard')} />
@@ -773,161 +779,258 @@ function LearningView({ words, onUpdateWord, onSaveWord, dueCount, userId, onTit
           <SubTabButton label="Choices"       active={subTab === 'choice'}    onClick={() => setSubTab('choice')} />
           <SubTabButton label="Typing"        active={subTab === 'typing'}    onClick={() => setSubTab('typing')} />
           <SubTabButton label="✨ AI Story"   active={subTab === 'story'}     onClick={() => setSubTab('story')} />
-          <SubTabButton label="🧠 SRS Review" active={subTab === 'srs'}       onClick={() => setSubTab('srs')} badge={group === 'my_vocabs' ? (dueCount > 0 ? dueCount : null) : null} />
+          <SubTabButton label="🧠 SRS Review" active={subTab === 'srs'}       onClick={() => setSubTab('srs')} badge={dueCount > 0 ? dueCount : null} />
         </div>
       </div>
 
       {/* Content */}
       <div className="mt-1 flex-1">
-        {group === 'my_vocabs' ? (
-          <>
-            {subTab === 'srs'       && <SRSReview words={words} onUpdateWord={onUpdateWord} />}
-            {subTab === 'story'     && <AIStoryGame words={words} />}
-            {subTab === 'flashcard' && <FlashcardGame words={words} />}
-            {subTab === 'matching'  && <MatchingGame words={words} />}
-            {subTab === 'choice'    && <MultipleChoiceGame words={words} />}
-            {subTab === 'typing'    && <TypingGame words={words} />}
-          </>
-        ) : (
-          <LevelStudySession
-            level={group}
-            levelMeta={levelMeta}
-            userId={userId}
-            onSaveWord={onSaveWord}
-            onUpdateWord={onUpdateWord}
-            subTab={subTab}
-          />
-        )}
+        {subTab === 'srs'       && <SRSReview words={words} onUpdateWord={onUpdateWord} />}
+        {subTab === 'story'     && <AIStoryGame words={words} />}
+        {subTab === 'flashcard' && <FlashcardGame words={words} />}
+        {subTab === 'matching'  && <MatchingGame words={words} />}
+        {subTab === 'choice'    && <MultipleChoiceGame words={words} />}
+        {subTab === 'typing'    && <TypingGame words={words} />}
       </div>
     </div>
   );
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// LevelStudySession — CEFR level study
+// LevelStudySession — CEFR level study (sub-group navigation)
 // ═════════════════════════════════════════════════════════════════════════════
-function LevelStudySession({ level, levelMeta, userId, onSaveWord, onUpdateWord, subTab }) {
-  const [saved, setSaved]         = useState([]);
-  const [unsaved, setUnsaved]     = useState([]);
-  const [total, setTotal]         = useState(0);
-  const [loading, setLoading]     = useState(true);
-  const [learning, setLearning]   = useState(false); // generating new words
-  const [learnWords, setLearnWords] = useState([]); // newly generated words for this session
+function LevelStudySession({ level, levelMeta, userId, onSaveWord, onUpdateWord, onBack }) {
+  const [lessonWords, setLessonWords]   = useState([]);
+  const [savedSet, setSavedSet]         = useState(new Set());
+  const [savedWords, setSavedWords]     = useState([]);
+  const [total, setTotal]               = useState(0);
+  const [loading, setLoading]           = useState(true);
+  const [activeGroup, setActiveGroup]   = useState(null);
 
-  const fetchLevelData = async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
       const res  = await fetch(`${API_BASE}/api/level-words/${level}?userId=${userId}`);
       const data = await res.json();
-      setSaved(data.saved || []);
-      setUnsaved(data.unsavedWords || []);
+      setLessonWords(data.lessonWords || []);
+      setSavedWords(data.saved || []);
+      setSavedSet(new Set((data.saved || []).map(w => w.word.toLowerCase())));
       setTotal(data.total || 0);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchLevelData(); }, [level, userId]);
+  useEffect(() => { fetchData(); }, [level, userId]);
 
-  const handleLearnNew = async () => {
-    const batch = unsaved.slice(0, 5);
-    if (!batch.length) return;
-    setLearning(true);
-    try {
-      // 1. Check global cache for all 5 words
-      const { found, missing } = await api.checkCache(batch.map(w => w.toLowerCase()));
-
-      // 2. Call Gemini only for words not in cache
-      let geminiWords = [];
-      if (missing.length) {
-        const sys = `You are an English-Thai dictionary. Return ONLY valid JSON:
-        {"words":[{"word":"string","phonetic":"string","partOfSpeech":"string","thaiTranslation":"string","examples":[{"en":"string (wrap word in <b> tags)","th":"string"},{"en":"string (wrap word in <b> tags)","th":"string"}]}]}
-        Provide entries for exactly these words (preserve original casing).`;
-        const result = await callGeminiJSON(sys, `Dictionary entries for: ${missing.join(', ')}`);
-        geminiWords = result?.words || [];
-        // Save new words to global cache
-        if (geminiWords.length) api.saveCache(geminiWords);
-      }
-
-      // 3. Combine cache hits + new Gemini words
-      const allWordData = [
-        ...Object.values(found),
-        ...geminiWords,
-      ];
-
-      // 4. Save to user's vocab
-      const newWords = [];
-      for (const w of allWordData) {
-        const saved = await onSaveWord({ ...w, level });
-        if (saved) newWords.push(saved);
-      }
-      setLearnWords(newWords);
-      await fetchLevelData();
-    } catch (e) { console.error(e); }
-    finally { setLearning(false); }
-  };
+  const subGroups = useMemo(() => {
+    const groups = [];
+    for (let i = 0; i < lessonWords.length; i += 5) {
+      groups.push(lessonWords.slice(i, i + 5));
+    }
+    return groups;
+  }, [lessonWords]);
 
   if (loading) return <div className="py-16 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>;
 
-  const studyWords = learnWords.length ? [...learnWords, ...saved] : saved;
-  const now = Date.now();
-  const due = saved.filter(w => !w.srs || w.srs.nextReview <= now).length;
+  if (activeGroup !== null) {
+    return (
+      <SubGroupPractice
+        key={`${level}-${activeGroup}`}
+        groupWords={subGroups[activeGroup]}
+        groupIdx={activeGroup}
+        lessonKey={level}
+        levelMeta={levelMeta}
+        userId={userId}
+        savedWords={savedWords}
+        onSaveWord={async (w) => {
+          const saved = await onSaveWord(w);
+          if (saved) {
+            setSavedWords(prev => {
+              const filtered = prev.filter(p => p.word !== saved.word);
+              return [...filtered, saved];
+            });
+            setSavedSet(prev => new Set([...prev, saved.word.toLowerCase()]));
+          }
+          return saved;
+        }}
+        onBack={() => setActiveGroup(null)}
+      />
+    );
+  }
 
-  // ── Progress bar ────────────────────────────────────────────────────────
-  const pct = total > 0 ? Math.round((saved.length / total) * 100) : 0;
+  const pct = total > 0 ? Math.round((savedSet.size / total) * 100) : 0;
 
   return (
-    <div className="space-y-4 animate-in fade-in">
-      {/* Progress card */}
-      <div className={`rounded-2xl border ${levelMeta.border} ${levelMeta.bg} p-4`}>
-        <div className="flex items-center justify-between mb-2">
-          <span className={`text-sm font-bold ${levelMeta.text}`}>Progress</span>
-          <span className={`text-sm font-black ${levelMeta.text}`}>{saved.length} / {total}</span>
-        </div>
-        <div className="w-full bg-white rounded-full h-2.5 overflow-hidden border border-white/50">
-          <div
-            className={`h-2.5 rounded-full bg-gradient-to-r ${levelMeta.color} transition-all duration-700`}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-        <div className="flex items-center justify-between mt-2">
-          <span className="text-xs text-slate-500">{unsaved.length} words not yet studied</span>
-          {due > 0 && <span className="text-xs font-bold text-red-500">{due} due for review</span>}
+    <div className="space-y-4 animate-in fade-in max-w-xl mx-auto w-full">
+      {/* Header with back */}
+      <div className="flex items-center gap-3">
+        <button onClick={onBack} className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 shadow-sm flex-none">
+          <ChevronDown className="w-4 h-4 text-slate-500 rotate-90" />
+        </button>
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <span className={`px-2.5 py-1 rounded-xl bg-gradient-to-br ${levelMeta.color} text-white font-black text-sm shadow-sm flex-none`}>
+            {levelMeta.icon}
+          </span>
+          <div className="min-w-0">
+            <p className="font-bold text-slate-800 text-sm">{levelMeta.label}</p>
+            <p className="text-xs text-slate-400">{savedSet.size}/{total} words · {pct}%</p>
+          </div>
         </div>
       </div>
 
-      {/* Learn new words button */}
-      {unsaved.length > 0 && subTab === 'srs' && (
-        <button
-          onClick={handleLearnNew}
-          disabled={learning}
-          className={`w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-sm transition-all
-            bg-gradient-to-r ${levelMeta.color} text-white hover:shadow-md disabled:opacity-70`}
-        >
-          {learning
-            ? <><Loader2 className="w-4 h-4 animate-spin" /> Loading 5 new words...</>
-            : <><Sparkles className="w-4 h-4" /> Learn 5 New Words ({unsaved.length} remaining)</>
-          }
-        </button>
-      )}
+      {/* Progress bar */}
+      <div className={`rounded-xl border ${levelMeta.border} ${levelMeta.bg} p-3`}>
+        <div className="w-full bg-white rounded-full h-2 overflow-hidden border border-white/50">
+          <div className={`h-2 rounded-full bg-gradient-to-r ${levelMeta.color} transition-all duration-700`} style={{ width: `${pct}%` }} />
+        </div>
+      </div>
 
-      {/* Study session */}
-      {studyWords.length > 0 ? (
-        <>
-          {subTab === 'srs'       && <SRSReview words={studyWords} onUpdateWord={onUpdateWord} />}
-          {subTab === 'story'     && <AIStoryGame words={studyWords} />}
-          {subTab === 'flashcard' && <FlashcardGame words={studyWords} />}
-          {subTab === 'matching'  && <MatchingGame words={studyWords} />}
-          {subTab === 'choice'    && <MultipleChoiceGame words={studyWords} />}
-          {subTab === 'typing'    && <TypingGame words={studyWords} />}
-        </>
-      ) : (
-        subTab === 'srs' && (
-          <div className="text-center py-12 text-slate-500">
-            <Brain className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-            <p className="font-medium">No words in this lesson yet</p>
-            <p className="text-sm mt-1">Press "Learn 5 New Words" to get started</p>
+      {/* Sub-group list */}
+      <div className="space-y-2">
+        {subGroups.map((group, idx) => {
+          const savedCount    = group.filter(w => savedSet.has(w.toLowerCase())).length;
+          const practiceData  = (() => { try { return JSON.parse(localStorage.getItem(`sg_${level}_${idx}_${userId}`)); } catch { return null; } })();
+          const today         = new Date().toISOString().split('T')[0];
+          const doneToday     = practiceData?.date === today;
+
+          return (
+            <button
+              key={idx}
+              onClick={() => setActiveGroup(idx)}
+              className={`w-full rounded-xl border p-3 text-left transition-all hover:shadow-md flex items-center gap-3 ${doneToday ? `${levelMeta.bg} ${levelMeta.border}` : 'bg-white border-slate-200 hover:border-indigo-200'}`}
+            >
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm font-black flex-none ${doneToday ? `bg-gradient-to-br ${levelMeta.color} text-white` : 'bg-slate-100 text-slate-500'}`}>
+                {idx + 1}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-slate-700 truncate">
+                  {group[0]} – {group[group.length - 1]}
+                </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  {group.map(w => (
+                    <span key={w} className={`w-1.5 h-1.5 rounded-full ${savedSet.has(w.toLowerCase()) ? 'bg-green-400' : 'bg-slate-200'}`} />
+                  ))}
+                  {practiceData && (
+                    <span className={`text-[10px] font-bold ml-1 ${doneToday ? levelMeta.text : 'text-slate-400'}`}>
+                      {doneToday ? '✓ Today' : practiceData.date}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <ChevronDown className="w-4 h-4 text-slate-300 -rotate-90 flex-none" />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SubGroupPractice — practice a group of 5 words through 4 stages
+// ═════════════════════════════════════════════════════════════════════════════
+function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, savedWords, onSaveWord, onBack }) {
+  const [words, setWords]     = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState(null);
+  const [stage, setStage]     = useState(0);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const keys          = groupWords.map(w => w.toLowerCase());
+        const { found, missing } = await api.checkCache(keys);
+        let geminiWords     = [];
+
+        if (missing.length) {
+          const sys = `You are an English-Thai dictionary. Return ONLY valid JSON:
+          {"words":[{"word":"string","phonetic":"string","partOfSpeech":"string","thaiTranslation":"string","examples":[{"en":"string (wrap word in <b> tags)","th":"string"},{"en":"string (wrap word in <b> tags)","th":"string"}]}]}
+          Provide entries for exactly these words (preserve original casing).`;
+          const result = await callGeminiJSON(sys, `Dictionary entries for: ${missing.join(', ')}`);
+          geminiWords  = result?.words || [];
+          if (geminiWords.length) api.saveCache(geminiWords);
+        }
+
+        const allData = [...Object.values(found), ...geminiWords];
+        const finalWords = [];
+        for (const w of allData) {
+          const existing = savedWords.find(s => s.word.toLowerCase() === w.word.toLowerCase());
+          if (existing) {
+            finalWords.push(existing);
+          } else {
+            const saved = await onSaveWord({ ...w, level: lessonKey });
+            if (saved) finalWords.push(saved);
+            else finalWords.push(w);
+          }
+        }
+        setWords(finalWords.filter(Boolean));
+      } catch (e) { console.error(e); setError('Failed to load words. Please try again.'); }
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  const onComplete = () => {
+    localStorage.setItem(`sg_${lessonKey}_${groupIdx}_${userId}`, JSON.stringify({
+      date: new Date().toISOString().split('T')[0],
+    }));
+    onBack();
+  };
+
+  const next = () => setStage(s => s + 1);
+
+  if (loading) return (
+    <div className="py-20 flex flex-col items-center gap-3">
+      <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+      <p className="text-sm text-slate-500">Loading words…</p>
+    </div>
+  );
+
+  if (error) return (
+    <div className="text-center py-12 text-red-500 bg-red-50 rounded-2xl border border-red-100 p-6">
+      <p className="font-medium">{error}</p>
+      <button onClick={onBack} className="mt-4 px-4 py-2 bg-white border border-red-200 text-red-600 rounded-xl text-sm font-bold">Go Back</button>
+    </div>
+  );
+
+  if (!words?.length) return null;
+
+  const stages = [
+    { label: 'Step 1: Flashcards',      icon: <Layers className="w-4 h-4" />,       el: <FlashcardGame      words={words} onNext={next} /> },
+    { label: 'Step 2: Match',           icon: <RefreshCw className="w-4 h-4" />,     el: <MatchingGame       words={words} onNext={next} /> },
+    { label: 'Step 3: Multiple Choice', icon: <CheckCircle className="w-4 h-4" />,   el: <MultipleChoiceGame words={words} onNext={next} /> },
+    { label: 'Step 4: Fill in Blank',   icon: <Edit3 className="w-4 h-4" />,         el: <TypingGame         words={words} onNext={onComplete} /> },
+  ];
+
+  return (
+    <div className="space-y-4 animate-in fade-in max-w-xl mx-auto w-full">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <button onClick={onBack} className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 shadow-sm flex-none">
+          <ChevronDown className="w-4 h-4 text-slate-500 rotate-90" />
+        </button>
+        <div>
+          <p className="text-sm font-bold text-slate-800">{levelMeta.label} — Group {groupIdx + 1}</p>
+          <p className="text-xs text-slate-400">{groupWords.join(', ')}</p>
+        </div>
+      </div>
+
+      {stage < stages.length ? (
+        <div className="animate-in slide-in-from-right-4 fade-in">
+          <div className={`${levelMeta.bg} ${levelMeta.text} px-4 py-2 rounded-xl text-center text-sm font-bold mb-4 border ${levelMeta.border} shadow-sm flex items-center justify-center gap-2`}>
+            {stages[stage].icon} {stages[stage].label}
           </div>
-        )
+          {stages[stage].el}
+        </div>
+      ) : (
+        <div className="text-center py-16 px-4 bg-white rounded-2xl border border-slate-200 shadow-sm animate-in zoom-in-95">
+          <div className="w-20 h-20 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-sm">
+            <Trophy className="w-10 h-10" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-800 mb-2">Group Complete!</h2>
+          <p className="text-sm text-slate-500 mb-6">You've practiced all {words.length} words in this group.</p>
+          <button onClick={onBack} className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 text-sm">Back to Groups</button>
+        </div>
       )}
     </div>
   );
@@ -1487,7 +1590,7 @@ function AdminView({ user }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // WordOfTheDayView
 // ═════════════════════════════════════════════════════════════════════════════
-function WordOfTheDayView({ onSave, savedWords }) {
+function WordOfTheDayView({ onSave, savedWords, user }) {
   const [wotdData, setWotdData]   = useState([]);
   const [wordleWord, setWordleWord] = useState('');
   const [loading, setLoading]     = useState(true);
@@ -1591,7 +1694,7 @@ function WordOfTheDayView({ onSave, savedWords }) {
           </div>
         )}
         {dailyTab === 'practice' && <DailyPracticeFlow words={wotdData} />}
-        {dailyTab === 'wordle'   && <DailyWordle word={wordleWord} />}
+        {dailyTab === 'wordle'   && <DailyWordle word={wordleWord} user={user} />}
       </div>
     </div>
   );
@@ -2004,7 +2107,7 @@ function MultipleChoiceGame({ words, onNext }) {
   const ok = selAns !== null;
 
   return (
-    <div className="max-w-xl mx-auto bg-white p-5 md:p-8 rounded-2xl shadow-sm border border-slate-200 w-full">
+    <div key={cidx} className="max-w-xl mx-auto bg-white p-5 md:p-8 rounded-2xl shadow-sm border border-slate-200 w-full">
       <div className="flex justify-between items-center mb-5">
         <h2 className="text-lg font-bold text-slate-800">Multiple Choice</h2>
         <div className="bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-full text-xs font-bold">Q {cidx + 1} / {questions.length}</div>
@@ -2118,35 +2221,130 @@ function TypingGame({ words, onNext }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // DailyWordle
 // ═════════════════════════════════════════════════════════════════════════════
-function DailyWordle({ word }) {
+function DailyWordle({ word, user }) {
   const today = new Date().toISOString().split('T')[0];
-  const stateKey = `wordle_state_${today}`;
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [history, setHistory]           = useState([]);  // [{date, wordle}]
+  const [leaderboard, setLeaderboard]   = useState([]);
+  const [lbTab, setLbTab]               = useState('play'); // 'play' | 'rank'
+  const [scoreSaved, setScoreSaved]     = useState(false);
 
-  const loadState = () => {
-    try { return JSON.parse(localStorage.getItem(stateKey)) || {}; } catch { return {}; }
+  // Load history (last 7 days)
+  useEffect(() => {
+    fetch(`${API_BASE}/api/wordle/history?limit=7`)
+      .then(r => r.json())
+      .then(days => setHistory(days))
+      .catch(() => {});
+  }, []);
+
+  // Load leaderboard for selected date
+  useEffect(() => {
+    fetch(`${API_BASE}/api/wordle/leaderboard?date=${selectedDate}`)
+      .then(r => r.json())
+      .then(scores => setLeaderboard(Array.isArray(scores) ? scores : []))
+      .catch(() => {});
+  }, [selectedDate, scoreSaved]);
+
+  const selectedWord = selectedDate === today ? word : (history.find(h => h.date === selectedDate)?.wordle || '');
+
+  // Save score when game ends
+  const handleGameEnd = (guesses, won) => {
+    if (!user || scoreSaved) return;
+    setScoreSaved(true);
+    fetch(`${API_BASE}/api/wordle/score`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date: selectedDate,
+        userId: user.sub,
+        userName: user.name,
+        userPicture: user.picture,
+        guesses,
+        won,
+      }),
+    }).then(() => setScoreSaved(s => s)).catch(() => {});
   };
 
-  const saved = loadState();
-  const [target, setTarget]   = useState(word || '');
+  return (
+    <div className="space-y-3 max-w-md mx-auto w-full">
+      {/* Day picker */}
+      <div className="flex overflow-x-auto gap-1.5 pb-1 hide-scrollbar">
+        {history.map(h => (
+          <button
+            key={h.date}
+            onClick={() => { setSelectedDate(h.date); setLbTab('play'); setScoreSaved(false); }}
+            className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold transition-all flex-none ${
+              selectedDate === h.date
+                ? 'bg-indigo-600 text-white'
+                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            {h.date === today ? 'Today' : new Date(h.date + 'T00:00:00').toLocaleDateString('en', { month: 'short', day: 'numeric' })}
+          </button>
+        ))}
+      </div>
+
+      {/* Play / Rank tabs */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setLbTab('play')}
+          className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${lbTab === 'play' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+        >
+          Play
+        </button>
+        <button
+          onClick={() => setLbTab('rank')}
+          className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${lbTab === 'rank' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+        >
+          Ranking
+        </button>
+      </div>
+
+      {lbTab === 'play' && selectedWord && (
+        <WordleGame
+          key={selectedDate}
+          word={selectedWord}
+          date={selectedDate}
+          onGameEnd={handleGameEnd}
+        />
+      )}
+      {lbTab === 'rank' && (
+        <WordleLeaderboard leaderboard={leaderboard} date={selectedDate} user={user} />
+      )}
+    </div>
+  );
+}
+
+function WordleGame({ word, date, onGameEnd }) {
+  const MAX = 6;
+  const stateKey = `wordle_state_${date}`;
+  const [target] = useState(word.toLowerCase());
+
+  const load = () => {
+    try {
+      const s = JSON.parse(localStorage.getItem(stateKey)) || {};
+      return s.word === word.toLowerCase() ? s : {};
+    } catch { return {}; }
+  };
+  const saved = load();
   const [guesses, setGuesses] = useState(saved.guesses || []);
   const [curr, setCurr]       = useState('');
   const [status, setStatus]   = useState(saved.status || 'playing');
-  const MAX = 6;
+  const [reported, setReported] = useState(saved.status === 'won' || saved.status === 'lost');
 
+  // Persist state
   useEffect(() => {
-    if (!word) return;
-    setTarget(word);
-    // Only reset if it's a new word (different from saved)
-    if (saved.word && saved.word !== word) {
-      setGuesses([]); setCurr(''); setStatus('playing');
-    }
-  }, [word]);
-
-  // Persist state after each guess
-  useEffect(() => {
-    if (!target) return;
     localStorage.setItem(stateKey, JSON.stringify({ word: target, guesses, status }));
   }, [guesses, status]);
+
+  // Report score once
+  useEffect(() => {
+    if ((status === 'won' || status === 'lost') && !reported) {
+      setReported(true);
+      onGameEnd?.(guesses.length, status === 'won');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
 
   const getColors = (g) => {
     const colors = Array(target.length).fill('bg-slate-500 text-white border-slate-600');
@@ -2176,7 +2374,7 @@ function DailyWordle({ word }) {
   useEffect(() => {
     const handler = (e) => {
       if (status !== 'playing') return;
-      if (e.key === 'Enter')    handleKey('Enter');
+      if (e.key === 'Enter') handleKey('Enter');
       else if (e.key === 'Backspace') handleKey('Backspace');
       else if (/^[a-zA-Z]$/.test(e.key)) handleKey(e.key);
     };
@@ -2204,18 +2402,13 @@ function DailyWordle({ word }) {
   if (!target) return null;
 
   return (
-    <div className="max-w-md mx-auto bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-200 w-full">
-      <div className="text-center mb-6">
-        <h3 className="font-bold text-xl text-slate-800">Daily Wordle</h3>
-        <p className="text-xs text-slate-500">Same word for everyone today · Guess {target.length} letters</p>
-      </div>
-
+    <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-200 w-full">
       {/* Grid */}
       <div className="flex flex-col gap-1.5 mb-6 w-full max-w-[260px] mx-auto">
         {Array.from({ length: MAX }).map((_, row) => {
-          const isCurr  = row === guesses.length;
-          const guess   = guesses[row] ?? (isCurr ? curr : '');
-          const colors  = guesses[row] ? getColors(guess) : [];
+          const isCurr = row === guesses.length;
+          const guess  = guesses[row] ?? (isCurr ? curr : '');
+          const colors = guesses[row] ? getColors(guess) : [];
           return (
             <div key={row} className="flex gap-1.5 justify-center">
               {Array.from({ length: target.length }).map((_, col) => {
@@ -2234,7 +2427,7 @@ function DailyWordle({ word }) {
 
       {status !== 'playing' && (
         <div className={`text-center p-4 rounded-xl mb-5 font-bold animate-in zoom-in-95 ${status === 'won' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-          {status === 'won' ? '🎉 Brilliant!' : `❌ Word was ${target.toUpperCase()}`}
+          {status === 'won' ? `🎉 Won in ${guesses.length}!` : `❌ Word was ${target.toUpperCase()}`}
         </div>
       )}
 
@@ -2249,6 +2442,55 @@ function DailyWordle({ word }) {
             {i === 2 && <button onClick={() => handleKey('Backspace')} className="px-2 py-3.5 bg-slate-200 text-slate-700 font-bold rounded hover:bg-slate-300"><Delete className="w-4 h-4 mx-auto" /></button>}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function WordleLeaderboard({ leaderboard, date, user }) {
+  const medals = ['🥇', '🥈', '🥉'];
+  const today  = new Date().toISOString().split('T')[0];
+  const dateLabel = date === today ? 'Today' : new Date(date + 'T00:00:00').toLocaleDateString('en', { month: 'long', day: 'numeric', year: 'numeric' });
+
+  if (!leaderboard.length) {
+    return (
+      <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 shadow-sm">
+        <Trophy className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+        <p className="text-slate-500 text-sm">No scores yet for {dateLabel}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="bg-indigo-50 border-b border-indigo-100 px-4 py-3">
+        <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider">{dateLabel} · {leaderboard.length} players</p>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {leaderboard.map((entry, i) => {
+          const isMe = user?.sub === entry.userId;
+          return (
+            <div key={entry.userId} className={`flex items-center gap-3 px-4 py-3 ${isMe ? 'bg-indigo-50' : ''}`}>
+              <span className="text-lg w-7 text-center flex-none">
+                {medals[i] || <span className="text-sm font-bold text-slate-400">#{i + 1}</span>}
+              </span>
+              {entry.userPicture
+                ? <img src={entry.userPicture} className="w-8 h-8 rounded-full object-cover flex-none" alt="" />
+                : <div className="w-8 h-8 rounded-full bg-indigo-100 flex-none" />
+              }
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm font-bold truncate ${isMe ? 'text-indigo-700' : 'text-slate-800'}`}>
+                  {entry.userName}{isMe ? ' (you)' : ''}
+                </p>
+              </div>
+              <div className={`text-right flex-none ${entry.won ? 'text-green-600' : 'text-red-500'}`}>
+                <p className="text-sm font-black">
+                  {entry.won ? `${entry.guesses} guess${entry.guesses !== 1 ? 'es' : ''}` : 'Lost'}
+                </p>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

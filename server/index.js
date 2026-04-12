@@ -39,6 +39,7 @@ let vocabLevelsCol;
 let wordCacheCol;
 let configCol;
 let adminsCol;
+let wordleScoresCol;
 
 const INITIAL_ADMIN = 'phawit.boo@gmail.com';
 
@@ -53,11 +54,15 @@ async function connectDB() {
   configCol        = db.collection('config');
   adminsCol        = db.collection('admins');
 
+  wordleScoresCol  = db.collection('wordle_scores');
+
   await wordsCol.createIndex({ userId: 1, word: 1 }, { unique: true });
   await wordCacheCol.createIndex({ word: 1 }, { unique: true });
   await vocabBankCol.createIndex({ word: 1 }, { unique: true }).catch(() => {});
   await dailyCol.createIndex({ date: 1 }, { unique: true });
   await adminsCol.createIndex({ email: 1 }, { unique: true });
+  await wordleScoresCol.createIndex({ date: 1, userId: 1 }, { unique: true });
+  await wordleScoresCol.createIndex({ date: 1, score: 1 });
 
   // Seed initial admin
   await adminsCol.updateOne(
@@ -223,7 +228,7 @@ app.get('/api/level-words/:lesson', async (req, res) => {
     const userWords   = await wordsCol.find({ userId, word: { $in: lowerWords } }).toArray();
     const savedSet    = new Set(userWords.map(w => w.word.toLowerCase()));
     const unsavedWords = lessonWords.filter(w => !savedSet.has(w.toLowerCase()));
-    res.json({ saved: userWords.map(toClient), unsavedWords, total: lessonWords.length });
+    res.json({ saved: userWords.map(toClient), unsavedWords, total: lessonWords.length, lessonWords });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: e.message });
@@ -307,6 +312,49 @@ app.post('/api/gemini', async (req, res) => {
     console.error(e);
     res.status(500).json({ error: e.message });
   }
+});
+
+// GET /api/wordle/history?limit=7
+app.get('/api/wordle/history', async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit || 7), 30);
+  try {
+    const days = await dailyCol.find({ wordle: { $exists: true } })
+      .sort({ date: -1 })
+      .limit(limit)
+      .project({ date: 1, wordle: 1, _id: 0 })
+      .toArray();
+    res.json(days);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/wordle/score
+app.post('/api/wordle/score', async (req, res) => {
+  const { date, userId, userName, userPicture, guesses, won } = req.body;
+  if (!date || !userId) return res.status(400).json({ error: 'date and userId required' });
+  try {
+    await wordleScoresCol.updateOne(
+      { date, userId },
+      { $setOnInsert: { date, userId, userName, userPicture, guesses: parseInt(guesses), won: !!won, savedAt: Date.now() } },
+      { upsert: true },
+    );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/wordle/leaderboard?date=xxx
+app.get('/api/wordle/leaderboard', async (req, res) => {
+  const { date } = req.query;
+  if (!date) return res.status(400).json({ error: 'date required' });
+  try {
+    const scores = await wordleScoresCol.find({ date }).toArray();
+    const sorted = scores.sort((a, b) => {
+      if (a.won && !b.won) return -1;
+      if (!a.won && b.won) return 1;
+      if (a.won && b.won) return a.guesses - b.guesses;
+      return b.guesses - a.guesses;
+    });
+    res.json(sorted.map(({ _id, ...rest }) => rest));
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Admin routes ──────────────────────────────────────────────────────────────
