@@ -187,10 +187,11 @@ function LoginView({ onLogin }) {
 export default function App() {
   const [user, setUser]           = useState(getStoredUser);
   const [words, setWords]         = useState([]);
-  const [activeTab, setActiveTab] = useState('find');
-  const [loading, setLoading]     = useState(true);
-  const [isAdmin, setIsAdmin]     = useState(false);
-  const [headerTitle, setHeaderTitle] = useState(null);
+  const [activeTab, setActiveTab]         = useState('find');
+  const [loading, setLoading]             = useState(true);
+  const [isAdmin, setIsAdmin]             = useState(false);
+  const [headerTitle, setHeaderTitle]     = useState(null);
+  const [findFocusTrigger, setFindFocusTrigger] = useState(0);
 
   const TAB_TITLES = { find: 'Find Word', vocabs: 'My Vocabs', learning: 'Learn', wotd: 'Daily', profile: 'Profile', admin: 'Admin' };
   const switchTab = (tab) => { setActiveTab(tab); setHeaderTitle(null); };
@@ -280,7 +281,7 @@ export default function App() {
 
       {/* Main — top padding compensates for fixed header (≈52px) + safe-area */}
       <main className="max-w-4xl mx-auto p-4 w-full flex-1 flex flex-col" style={{ paddingTop: 'calc(52px + env(safe-area-inset-top, 0px) + 1rem)' }}>
-        {activeTab === 'find'     && <FindView    onSave={saveWordToDb} words={words} />}
+        {activeTab === 'find'     && <FindView    onSave={saveWordToDb} words={words} focusTrigger={findFocusTrigger} />}
         {activeTab === 'vocabs'   && <MyVocabsView words={words} onDelete={deleteWordFromDb} />}
         {activeTab === 'learning' && <LearningView words={words} onUpdateWord={updateWordInDb} onSaveWord={saveWordToDb} dueCount={dueCount} userId={user.sub} onTitleChange={setHeaderTitle} />}
         {activeTab === 'wotd'     && <WordOfTheDayView onSave={saveWordToDb} savedWords={words} user={user} />}
@@ -295,7 +296,7 @@ export default function App() {
           <NavButton icon={<Layers />} label="Learn"   active={activeTab === 'learning'} onClick={() => switchTab('learning')} badge={dueCount > 0 ? dueCount : null} />
 
           <button
-            onClick={() => switchTab('find')}
+            onClick={() => { switchTab('find'); setFindFocusTrigger(t => t + 1); }}
             className={`flex items-center justify-center px-6 py-2.5 md:px-8 md:py-3 rounded-2xl shadow-sm transition-all duration-200 mx-1 ${
               activeTab === 'find' ? 'bg-indigo-600 text-white scale-105 shadow-indigo-200' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
             }`}
@@ -352,7 +353,7 @@ function HighlightedText({ text }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // FindView
 // ═════════════════════════════════════════════════════════════════════════════
-function FindView({ onSave, words }) {
+function FindView({ onSave, words, focusTrigger }) {
   const [queryText, setQueryText]       = useState('');
   const [loading, setLoading]           = useState(false);
   const [result, setResult]             = useState(null);
@@ -366,11 +367,9 @@ function FindView({ onSave, words }) {
   const wrapperRef = useRef(null);
 
   useEffect(() => {
-    if (!result) {
-      const t = setTimeout(() => inputRef.current?.focus(), 50);
-      return () => clearTimeout(t);
-    }
-  }, [result]);
+    const t = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, [result, focusTrigger]);
 
   // Close suggestions when clicking outside
   useEffect(() => {
@@ -490,7 +489,7 @@ function FindView({ onSave, words }) {
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               onFocus={() => suggestions.length > 0 && setShowSugs(true)}
-              placeholder="Type an English word here..."
+              placeholder="Enter vocabulary."
               className="w-full py-3.5 pl-5 pr-14 text-lg outline-none bg-transparent"
               autoComplete="off"
             />
