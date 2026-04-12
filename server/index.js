@@ -15,12 +15,11 @@ const PORT = process.env.PORT || 3001;
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:4173',
-  process.env.FRONTEND_URL, // set this on Render to your Vercel URL
+  process.env.FRONTEND_URL,
 ].filter(Boolean);
 
 app.use(cors({
   origin: (origin, cb) => {
-    // allow requests with no origin (mobile apps, curl, server-to-server)
     if (!origin) return cb(null, true);
     if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
     cb(new Error(`CORS: ${origin} not allowed`));
@@ -38,6 +37,10 @@ let vocabBankCol;
 let dailyCol;
 let vocabLevelsCol;
 let wordCacheCol;
+let configCol;
+let adminsCol;
+
+const INITIAL_ADMIN = 'phawit.boo@gmail.com';
 
 async function connectDB() {
   await client.connect();
@@ -47,17 +50,42 @@ async function connectDB() {
   dailyCol         = db.collection('daily');
   vocabLevelsCol   = db.collection('vocab_levels');
   wordCacheCol     = db.collection('word_cache');
+  configCol        = db.collection('config');
+  adminsCol        = db.collection('admins');
+
   await wordsCol.createIndex({ userId: 1, word: 1 }, { unique: true });
   await wordCacheCol.createIndex({ word: 1 }, { unique: true });
   await vocabBankCol.createIndex({ word: 1 }, { unique: true }).catch(() => {});
   await dailyCol.createIndex({ date: 1 }, { unique: true });
+  await adminsCol.createIndex({ email: 1 }, { unique: true });
+
+  // Seed initial admin
+  await adminsCol.updateOne(
+    { email: INITIAL_ADMIN },
+    { $setOnInsert: { email: INITIAL_ADMIN, addedAt: Date.now() } },
+    { upsert: true },
+  );
+
   console.log('✅ Connected to MongoDB');
+}
+
+// ── Gemini config from DB (fallback to env) ───────────────────────────────────
+async function getGeminiConfig() {
+  try {
+    const doc = await configCol.findOne({ _id: 'gemini' });
+    return {
+      apiKey: doc?.apiKey || process.env.VITE_GEMINI_API_KEY,
+      model:  doc?.model  || 'gemini-2.5-flash',
+    };
+  } catch {
+    return { apiKey: process.env.VITE_GEMINI_API_KEY, model: 'gemini-2.5-flash' };
+  }
 }
 
 // ── Gemini helper (server-side) ───────────────────────────────────────────────
 async function callGeminiServer(systemPrompt, userPrompt) {
-  const apiKey = process.env.VITE_GEMINI_API_KEY;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const { apiKey, model } = await getGeminiConfig();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -77,6 +105,18 @@ const toClient = (doc) => {
   if (!doc) return null;
   const { _id, ...rest } = doc;
   return { id: _id.toString(), ...rest };
+};
+
+// ── Admin middleware ──────────────────────────────────────────────────────────
+const requireAdmin = async (req, res, next) => {
+  const email = req.query.email || req.body.email;
+  if (!email) return res.status(401).json({ error: 'email required' });
+  try {
+    const admin = await adminsCol.findOne({ email });
+    if (!admin) return res.status(403).json({ error: 'Not authorized' });
+    req.adminEmail = email;
+    next();
+  } catch (e) { res.status(500).json({ error: e.message }); }
 };
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -141,7 +181,6 @@ app.get('/api/suggest', async (req, res) => {
   const q = (req.query.q || '').trim().toLowerCase();
   if (q.length < 1) return res.json([]);
   try {
-    // Escape regex special chars
     const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const docs = await vocabBankCol
       .find({ word: { $regex: `^${escaped}`, $options: 'i' } })
@@ -170,7 +209,6 @@ app.delete('/api/words/:id', async (req, res) => {
 });
 
 // GET /api/level-words/:lesson?userId=xxx
-// Returns { saved: [full word docs], unsavedWords: [word strings], total: N }
 app.get('/api/level-words/:lesson', async (req, res) => {
   const { lesson } = req.params;
   const { userId } = req.query;
@@ -181,7 +219,6 @@ app.get('/api/level-words/:lesson', async (req, res) => {
   try {
     const lessonDocs  = await vocabLevelsCol.find({ lesson }).sort({ order: 1 }).toArray();
     const lessonWords = lessonDocs.map(d => d.word);
-    // case-insensitive match: store words lowercased in user collection
     const lowerWords  = lessonWords.map(w => w.toLowerCase());
     const userWords   = await wordsCol.find({ userId, word: { $in: lowerWords } }).toArray();
     const savedSet    = new Set(userWords.map(w => w.word.toLowerCase()));
@@ -194,7 +231,6 @@ app.get('/api/level-words/:lesson', async (req, res) => {
 });
 
 // GET /api/word-cache?words=word1,word2,...
-// Batch lookup — returns cached word data for known words
 app.get('/api/word-cache', async (req, res) => {
   const words = (req.query.words || '').split(',').map(w => w.trim().toLowerCase()).filter(Boolean);
   if (!words.length) return res.json({ found: {}, missing: [] });
@@ -209,7 +245,7 @@ app.get('/api/word-cache', async (req, res) => {
 
 // POST /api/word-cache — save one or many word entries
 app.post('/api/word-cache', async (req, res) => {
-  const { words } = req.body; // array of word objects
+  const { words } = req.body;
   if (!Array.isArray(words) || !words.length) return res.status(400).json({ error: 'words[] required' });
   try {
     const ops = words
@@ -226,23 +262,20 @@ app.post('/api/word-cache', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/daily — global 5 words + wordle word for today (generated once, shared by all users)
+// GET /api/daily — global 5 words + wordle word (generated once/day, shared by all)
 app.get('/api/daily', async (req, res) => {
   const today = new Date().toISOString().split('T')[0];
   try {
-    // Return cached if already generated today
     const existing = await dailyCol.findOne({ date: today });
     if (existing) return res.json({ words: existing.words, wordle: existing.wordle });
 
-    // Generate 5 words via Gemini
     const sys = `You are an English-Thai dictionary. Return ONLY valid JSON:
     {"words":[{"word":"string","phonetic":"string","partOfSpeech":"string","thaiTranslation":"string","examples":[{"en":"string (wrap word in <b> tags)","th":"string"},{"en":"string (wrap word in <b> tags)","th":"string"}]}]}
     Exactly 5 interesting/useful English vocabulary words, 2 examples each.`;
     const result = await callGeminiServer(sys, 'Generate 5 useful English vocabulary words for daily learning.');
     const words = (result.words || []).map(w => ({ ...w, id: w.word }));
 
-    // Pick a deterministic 5-letter wordle word from vocab_bank using today's date as seed
-    const seed = parseInt(today.replace(/-/g, '')) % 9973; // prime mod for distribution
+    const seed = parseInt(today.replace(/-/g, '')) % 9973;
     const [wordleDoc] = await vocabBankCol
       .find({ word: { $regex: '^[a-z]{5}$' } })
       .skip(seed)
@@ -250,7 +283,6 @@ app.get('/api/daily', async (req, res) => {
       .toArray();
     const wordle = wordleDoc?.word || words.find(w => w.word.length === 5)?.word || 'study';
 
-    // Save globally (upsert in case of race condition)
     await dailyCol.updateOne(
       { date: today },
       { $setOnInsert: { date: today, words, wordle, createdAt: Date.now() } },
@@ -262,6 +294,99 @@ app.get('/api/daily', async (req, res) => {
     console.error(e);
     res.status(500).json({ error: e.message });
   }
+});
+
+// POST /api/gemini — proxy all Gemini calls from frontend
+app.post('/api/gemini', async (req, res) => {
+  const { systemPrompt, userPrompt } = req.body;
+  if (!systemPrompt || !userPrompt) return res.status(400).json({ error: 'systemPrompt and userPrompt required' });
+  try {
+    const result = await callGeminiServer(systemPrompt, userPrompt);
+    res.json(result);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Admin routes ──────────────────────────────────────────────────────────────
+
+// GET /api/admin/check?email=xxx
+app.get('/api/admin/check', async (req, res) => {
+  const { email } = req.query;
+  if (!email) return res.json({ isAdmin: false });
+  try {
+    const admin = await adminsCol.findOne({ email });
+    res.json({ isAdmin: !!admin });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/settings?email=xxx
+app.get('/api/admin/settings', requireAdmin, async (req, res) => {
+  try {
+    const cfg    = await configCol.findOne({ _id: 'gemini' });
+    const admins = await adminsCol.find({}).toArray();
+    res.json({
+      apiKeySet: !!cfg?.apiKey,
+      apiKeyHint: cfg?.apiKey ? '***' + cfg.apiKey.slice(-4) : '(using env default)',
+      model: cfg?.model || 'gemini-2.5-flash',
+      admins: admins.map(a => a.email),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/admin/settings
+app.put('/api/admin/settings', requireAdmin, async (req, res) => {
+  const { apiKey, model } = req.body;
+  try {
+    const update = {};
+    if (apiKey !== undefined) update.apiKey = apiKey;
+    if (model  !== undefined) update.model  = model;
+    await configCol.updateOne({ _id: 'gemini' }, { $set: update }, { upsert: true });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/models?email=xxx — list available Gemini models
+app.get('/api/admin/models', requireAdmin, async (req, res) => {
+  try {
+    const { apiKey } = await getGeminiConfig();
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    if (!r.ok) throw new Error(`Gemini HTTP ${r.status}`);
+    const data = await r.json();
+    const models = (data.models || [])
+      .filter(m => m.supportedGenerationMethods?.includes('generateContent') && m.name.includes('gemini'))
+      .map(m => ({ id: m.name.replace('models/', ''), label: m.displayName || m.name.replace('models/', '') }))
+      .sort((a, b) => {
+        const score = id => (id.includes('pro') ? 10 : 0) + parseFloat((id.match(/(\d+\.\d+)/) || [0, 0])[1]);
+        return score(a.id) - score(b.id);
+      });
+    res.json({ models });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/admin/admins — add admin email
+app.post('/api/admin/admins', requireAdmin, async (req, res) => {
+  const { newEmail } = req.body;
+  if (!newEmail) return res.status(400).json({ error: 'newEmail required' });
+  try {
+    await adminsCol.updateOne(
+      { email: newEmail },
+      { $setOnInsert: { email: newEmail, addedAt: Date.now() } },
+      { upsert: true },
+    );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/admin/admins/:email
+app.delete('/api/admin/admins/:email', requireAdmin, async (req, res) => {
+  const target = decodeURIComponent(req.params.email);
+  if (target === req.adminEmail) return res.status(400).json({ error: 'Cannot remove yourself' });
+  try {
+    await adminsCol.deleteOne({ email: target });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@ import {
   Search, Volume2, Trash2, BookOpen, Layers, Edit3, Type, CheckCircle,
   RefreshCw, AlertCircle, Loader2, Sun, Book, Lightbulb, Clock, ChevronDown,
   User, Trophy, Delete, Sparkles, Flame, Brain, RotateCcw, LogOut,
-  Settings, Key, Eye, EyeOff,
+  Settings, Shield, Eye, EyeOff, Plus, X,
 } from 'lucide-react';
 import { GoogleLogin, googleLogout } from '@react-oauth/google';
 
@@ -63,43 +63,18 @@ const api = {
   },
 };
 
-// ─── Gemini config (user key > system key, user model > default) ──────────────
-const SYSTEM_GEMINI_KEY   = import.meta.env.VITE_GEMINI_API_KEY || '';
-const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
-
-const getGeminiConfig = () => {
-  try {
-    const s = JSON.parse(localStorage.getItem('user_gemini_settings') || '{}');
-    return {
-      apiKey: s.userKey?.trim() || SYSTEM_GEMINI_KEY,
-      model:  s.model || DEFAULT_GEMINI_MODEL,
-      usingUserKey: !!s.userKey?.trim(),
-    };
-  } catch {
-    return { apiKey: SYSTEM_GEMINI_KEY, model: DEFAULT_GEMINI_MODEL, usingUserKey: false };
-  }
-};
-
-// ─── Gemini helper ────────────────────────────────────────────────────────────
+// ─── Gemini helper (calls backend, never exposes key to browser) ─────────────
 const callGeminiJSON = async (systemPrompt, userPrompt) => {
-  const { apiKey, model } = getGeminiConfig();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  const payload = {
-    contents: [{ parts: [{ text: userPrompt }] }],
-    systemInstruction: { parts: [{ text: systemPrompt }] },
-    generationConfig: { responseMimeType: 'application/json' },
-  };
   const delays = [1000, 2000, 4000, 8000, 16000];
   for (let i = 0; i < 5; i++) {
     try {
-      const res = await fetch(url, {
+      const res = await fetch(`${API_BASE}/api/gemini`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ systemPrompt, userPrompt }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      return JSON.parse(data.candidates[0].content.parts[0].text);
+      return res.json();
     } catch (e) {
       if (i === 4) throw e;
       await new Promise(r => setTimeout(r, delays[i]));
@@ -214,6 +189,7 @@ export default function App() {
   const [words, setWords]         = useState([]);
   const [activeTab, setActiveTab] = useState('find');
   const [loading, setLoading]     = useState(true);
+  const [isAdmin, setIsAdmin]     = useState(false);
 
   // Load words when user is available
   useEffect(() => {
@@ -223,6 +199,15 @@ export default function App() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [user?.sub]);
+
+  // Check admin status
+  useEffect(() => {
+    if (!user?.email) { setIsAdmin(false); return; }
+    fetch(`${API_BASE}/api/admin/check?email=${encodeURIComponent(user.email)}`)
+      .then(r => r.json())
+      .then(d => setIsAdmin(!!d.isAdmin))
+      .catch(() => setIsAdmin(false));
+  }, [user?.email]);
 
   const handleLogout = () => {
     googleLogout();
@@ -296,6 +281,7 @@ export default function App() {
         {activeTab === 'learning' && <LearningView words={words} onUpdateWord={updateWordInDb} onSaveWord={saveWordToDb} dueCount={dueCount} userId={user.sub} />}
         {activeTab === 'wotd'     && <WordOfTheDayView onSave={saveWordToDb} savedWords={words} />}
         {activeTab === 'profile'  && <ProfileView words={words} user={user} onLogout={handleLogout} />}
+        {activeTab === 'admin'    && isAdmin && <AdminView user={user} />}
       </main>
 
       {/* Bottom Nav — always fixed */}
@@ -315,6 +301,7 @@ export default function App() {
 
           <NavButton icon={<Sun />}  label="Daily"   active={activeTab === 'wotd'}    onClick={() => setActiveTab('wotd')} />
           <NavButton icon={<User />} label="Profile" active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
+          {isAdmin && <NavButton icon={<Shield />} label="Admin" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />}
         </div>
       </nav>
     </div>
@@ -1278,156 +1265,207 @@ function ProfileView({ words, user, onLogout }) {
         </div>
       </div>
 
-      {/* Gemini API Settings */}
-      <GeminiSettings />
     </div>
   );
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// GeminiSettings
+// AdminView
 // ═════════════════════════════════════════════════════════════════════════════
-function GeminiSettings() {
-  const saved = () => { try { return JSON.parse(localStorage.getItem('user_gemini_settings') || '{}'); } catch { return {}; } };
+function AdminView({ user }) {
+  const [settings, setSettings]   = useState(null);
+  const [models, setModels]       = useState([]);
+  const [apiKey, setApiKey]       = useState('');
+  const [showKey, setShowKey]     = useState(false);
+  const [model, setModel]         = useState('');
+  const [newAdmin, setNewAdmin]   = useState('');
+  const [saving, setSaving]       = useState(false);
+  const [loadingM, setLoadingM]   = useState(false);
+  const [msg, setMsg]             = useState('');
+  const email = user.email;
 
-  const [apiKey,         setApiKey]         = useState(() => saved().userKey || '');
-  const [showKey,        setShowKey]        = useState(false);
-  const [model,          setModel]          = useState(() => saved().model || '');
-  const [models,         setModels]         = useState([]);
-  const [fetching,       setFetching]       = useState(false);
-  const [fetchErr,       setFetchErr]       = useState('');
-  const [saveOk,         setSaveOk]         = useState(false);
+  const flash = (text) => { setMsg(text); setTimeout(() => setMsg(''), 3000); };
 
-  const effectiveKey = apiKey.trim() || SYSTEM_GEMINI_KEY;
-  const usingSystem  = !apiKey.trim();
+  useEffect(() => {
+    fetch(`${API_BASE}/api/admin/settings?email=${encodeURIComponent(email)}`)
+      .then(r => r.json())
+      .then(d => { setSettings(d); setModel(d.model); })
+      .catch(() => {});
+  }, [email]);
 
   const fetchModels = async () => {
-    if (!effectiveKey) { setFetchErr('No API key available'); return; }
-    setFetching(true); setFetchErr('');
+    setLoadingM(true);
     try {
-      const res  = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${effectiveKey}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status} — check your API key`);
-      const data = await res.json();
-      const list = (data.models || [])
-        .filter(m => m.supportedGenerationMethods?.includes('generateContent') && m.name.includes('gemini'))
-        .map(m => ({ id: m.name.replace('models/', ''), label: m.displayName || m.name.replace('models/', '') }))
-        .sort((a, b) => {
-          // flash < pro, lower version < higher version
-          const score = (id) => {
-            let s = 0;
-            if (id.includes('pro'))   s += 10;
-            if (id.includes('flash')) s += 0;
-            const ver = parseFloat((id.match(/(\d+\.\d+)/) || [0, 0])[1]);
-            s += ver;
-            return s;
-          };
-          return score(a.id) - score(b.id);
-        });
-      setModels(list);
-      // Set default to smallest (first) if no model chosen yet
-      if (!model && list.length) setModel(list[0].id);
-    } catch (e) { setFetchErr(e.message); }
-    finally { setFetching(false); }
+      const r = await fetch(`${API_BASE}/api/admin/models?email=${encodeURIComponent(email)}`);
+      const d = await r.json();
+      setModels(d.models || []);
+    } catch { flash('Failed to load models'); }
+    finally { setLoadingM(false); }
   };
 
-  const handleSave = () => {
-    const s = { model: model || DEFAULT_GEMINI_MODEL };
-    if (apiKey.trim()) s.userKey = apiKey.trim();
-    localStorage.setItem('user_gemini_settings', JSON.stringify(s));
-    setSaveOk(true);
-    setTimeout(() => setSaveOk(false), 2000);
+  const saveSettings = async () => {
+    setSaving(true);
+    try {
+      const body = { email, model };
+      if (apiKey.trim()) body.apiKey = apiKey.trim();
+      const r = await fetch(`${API_BASE}/api/admin/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error();
+      setApiKey('');
+      // Refresh settings
+      const updated = await fetch(`${API_BASE}/api/admin/settings?email=${encodeURIComponent(email)}`).then(r => r.json());
+      setSettings(updated);
+      flash('Saved!');
+    } catch { flash('Save failed'); }
+    finally { setSaving(false); }
   };
 
-  const handleReset = () => {
-    localStorage.removeItem('user_gemini_settings');
-    setApiKey(''); setModel(''); setModels([]); setFetchErr('');
+  const addAdmin = async () => {
+    if (!newAdmin.trim()) return;
+    try {
+      const r = await fetch(`${API_BASE}/api/admin/admins`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, newEmail: newAdmin.trim() }),
+      });
+      if (!r.ok) throw new Error();
+      setSettings(s => ({ ...s, admins: [...(s?.admins || []), newAdmin.trim()] }));
+      setNewAdmin('');
+    } catch { flash('Failed to add admin'); }
   };
 
-  const currentModel = model || getGeminiConfig().model;
+  const removeAdmin = async (target) => {
+    try {
+      const r = await fetch(`${API_BASE}/api/admin/admins/${encodeURIComponent(target)}?email=${encodeURIComponent(email)}`, {
+        method: 'DELETE',
+      });
+      if (!r.ok) throw new Error();
+      setSettings(s => ({ ...s, admins: s.admins.filter(a => a !== target) }));
+    } catch { flash('Failed to remove admin'); }
+  };
+
+  if (!settings) return <div className="py-16 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>;
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
-      <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-        <Settings className="w-4 h-4 text-indigo-500" /> Gemini API Settings
-      </h3>
-
-      {/* Key source indicator */}
-      <div className={`text-xs px-3 py-2 rounded-xl font-medium flex items-center gap-2 ${usingSystem ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-green-50 text-green-700 border border-green-100'}`}>
-        <Key className="w-3.5 h-3.5 flex-none" />
-        {usingSystem ? 'Using system default API key' : 'Using your personal API key'}
+    <div className="animate-in fade-in space-y-6 max-w-xl mx-auto w-full">
+      <div className="flex items-center gap-3 mb-2">
+        <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
+          <Shield className="w-5 h-5 text-white" />
+        </div>
+        <div>
+          <h2 className="text-lg font-bold text-slate-800">Admin Panel</h2>
+          <p className="text-xs text-slate-400">{email}</p>
+        </div>
       </div>
 
-      {/* API Key input */}
-      <div>
-        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Your API Key <span className="normal-case font-normal text-slate-400">(optional — overrides system key)</span></label>
-        <div className="relative">
+      {msg && (
+        <div className="bg-indigo-50 text-indigo-700 text-sm font-medium px-4 py-2.5 rounded-xl border border-indigo-100 animate-in fade-in">
+          {msg}
+        </div>
+      )}
+
+      {/* Gemini Config */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
+        <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+          <Settings className="w-4 h-4 text-indigo-500" /> Gemini Configuration
+        </h3>
+
+        <div className="text-xs px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 font-mono text-slate-500">
+          Current key: {settings.apiKeyHint}
+        </div>
+
+        <div>
+          <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">
+            New API Key <span className="normal-case font-normal text-slate-400">(leave blank to keep current)</span>
+          </label>
+          <div className="relative">
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              placeholder="AIza..."
+              className="w-full px-3 py-2.5 pr-10 text-sm border border-slate-200 rounded-xl outline-none focus:border-indigo-400 font-mono"
+            />
+            <button onClick={() => setShowKey(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+              {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Model</label>
+            <button onClick={fetchModels} disabled={loadingM} className="text-xs text-indigo-600 flex items-center gap-1 hover:underline disabled:opacity-50">
+              {loadingM ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              Load models
+            </button>
+          </div>
+          {models.length > 0 ? (
+            <select
+              value={model}
+              onChange={e => setModel(e.target.value)}
+              className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-indigo-400 bg-white"
+            >
+              {models.map((m, i) => (
+                <option key={m.id} value={m.id}>{m.label}{i === 0 ? ' (smallest)' : ''}</option>
+              ))}
+            </select>
+          ) : (
+            <div className="px-3 py-2.5 text-sm border border-slate-100 rounded-xl bg-slate-50 text-slate-600 font-mono">
+              {settings.model}
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={saveSettings}
+          disabled={saving}
+          className="w-full py-2.5 text-sm font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+          Save Configuration
+        </button>
+      </div>
+
+      {/* Admin Management */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
+        <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+          <Shield className="w-4 h-4 text-indigo-500" /> Admin Accounts
+        </h3>
+
+        <div className="space-y-2">
+          {(settings.admins || []).map(a => (
+            <div key={a} className="flex items-center justify-between bg-slate-50 px-3 py-2.5 rounded-xl border border-slate-100">
+              <span className="text-sm text-slate-700 font-medium truncate flex-1">{a}</span>
+              {a !== email && (
+                <button onClick={() => removeAdmin(a)} className="ml-2 p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg flex-none">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {a === email && <span className="text-[10px] text-indigo-500 font-bold ml-2">you</span>}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
           <input
-            type={showKey ? 'text' : 'password'}
-            value={apiKey}
-            onChange={e => setApiKey(e.target.value)}
-            placeholder="AIza..."
-            className="w-full px-3 py-2.5 pr-10 text-sm border border-slate-200 rounded-xl outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-50 font-mono"
+            type="email"
+            value={newAdmin}
+            onChange={e => setNewAdmin(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addAdmin()}
+            placeholder="email@example.com"
+            className="flex-1 px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-indigo-400"
           />
-          <button onClick={() => setShowKey(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-            {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          <button
+            onClick={addAdmin}
+            className="px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 flex items-center gap-1.5 text-sm font-bold"
+          >
+            <Plus className="w-4 h-4" /> Add
           </button>
         </div>
-        <p className="text-xs text-slate-400 mt-1">
-          Get free key at <span className="text-indigo-500 font-medium">aistudio.google.com</span>
-        </p>
-      </div>
-
-      {/* Fetch models */}
-      <button
-        onClick={fetchModels}
-        disabled={fetching}
-        className="w-full py-2.5 text-sm font-bold border-2 border-indigo-200 text-indigo-600 rounded-xl hover:bg-indigo-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-      >
-        {fetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-        Check Available Models
-      </button>
-
-      {fetchErr && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{fetchErr}</p>}
-
-      {/* Model selector */}
-      <div>
-        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">
-          Model
-          {models.length === 0 && <span className="normal-case font-normal text-slate-400 ml-1">(click "Check" to list available)</span>}
-        </label>
-        {models.length > 0 ? (
-          <select
-            value={model || currentModel}
-            onChange={e => setModel(e.target.value)}
-            className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-indigo-400 bg-white"
-          >
-            {models.map((m, i) => (
-              <option key={m.id} value={m.id}>
-                {m.label}{i === 0 ? ' (smallest)' : ''}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <div className="px-3 py-2.5 text-sm border border-slate-100 rounded-xl bg-slate-50 text-slate-600 font-mono">
-            {currentModel}
-          </div>
-        )}
-      </div>
-
-      {/* Save / Reset */}
-      <div className="flex gap-2 pt-1">
-        <button
-          onClick={handleSave}
-          className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all shadow-sm ${saveOk ? 'bg-green-500 text-white' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
-        >
-          {saveOk ? '✓ Saved!' : 'Save Settings'}
-        </button>
-        <button
-          onClick={handleReset}
-          className="px-4 py-2.5 text-sm font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
-        >
-          Reset
-        </button>
       </div>
     </div>
   );
