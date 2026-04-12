@@ -1339,7 +1339,7 @@ function SRSReview({ words, onUpdateWord, onNext, forceAll }) {
                       .replace(/<\/?b>/gi, '')
                       .replace(new RegExp(`\\b${current.word}\\b`, 'gi'), '______')}"
                   </p>
-                  <p className="text-xs text-slate-400 mt-2">{current.examples[0].th}</p>
+                  <p className="text-xs text-slate-400 mt-2"><HighlightedText text={current.examples[0].th} /></p>
                 </div>
               )}
 
@@ -1370,7 +1370,7 @@ function SRSReview({ words, onUpdateWord, onNext, forceAll }) {
               {current.examples?.[0] && (
                 <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
                   <p className="text-sm text-slate-800 mb-1.5 leading-relaxed"><HighlightedText text={current.examples[0].en} /></p>
-                  <p className="text-xs text-slate-500">{current.examples[0].th}</p>
+                  <p className="text-xs text-slate-500"><HighlightedText text={current.examples[0].th} /></p>
                 </div>
               )}
 
@@ -1956,7 +1956,7 @@ function WordCard({ result, hideHeader = false }) {
         {result.examples?.map((ex, i) => (
           <div key={i} className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
             <p className="text-slate-800 text-sm mb-1.5 leading-relaxed"><HighlightedText text={ex.en} /></p>
-            <p className="text-slate-500 text-xs">{ex.th}</p>
+            <p className="text-slate-500 text-xs"><HighlightedText text={ex.th} /></p>
           </div>
         ))}
       </div>
