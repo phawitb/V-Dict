@@ -1086,7 +1086,7 @@ function SubGroupAIStory({ words, onNext }) {
   if (!story) return (
     <div className="text-center py-8">
       <p className="text-red-500 text-sm mb-4">Failed to load story</p>
-      <button onClick={onNext} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">Skip</button>
+      <button onClick={() => onNext()} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">Skip</button>
     </div>
   );
 
@@ -1101,7 +1101,7 @@ function SubGroupAIStory({ words, onNext }) {
           <p className="text-slate-600 text-sm leading-relaxed"><BoldText text={story.thaiTranslation} /></p>
         </div>
       </div>
-      <button onClick={onNext} className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 text-sm">
+      <button onClick={() => onNext()} className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 text-sm">
         Continue to SRS Review →
       </button>
     </div>
@@ -1152,7 +1152,7 @@ function WordListPreview({ words, onNext }) {
         })}
       </div>
       <button
-        onClick={onNext}
+        onClick={() => onNext()}
         className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 text-sm"
       >
         เริ่ม Step 1: Flashcards →
@@ -1444,7 +1444,7 @@ function SRSReview({ words, onUpdateWord, onNext, forceAll }) {
           </p>
         )}
         {onNext && (
-          <button onClick={onNext} className="mt-4 px-5 py-2.5 bg-green-600 text-white text-sm font-bold rounded-xl hover:bg-green-700 shadow-sm">
+          <button onClick={() => onNext(0, 0)} className="mt-4 px-5 py-2.5 bg-green-600 text-white text-sm font-bold rounded-xl hover:bg-green-700 shadow-sm">
             Continue ✓
           </button>
         )}
@@ -1505,7 +1505,7 @@ function SRSReview({ words, onUpdateWord, onNext, forceAll }) {
           Review Again
         </button>
         {onNext && (
-          <button onClick={onNext} className="w-full py-3 bg-green-600 text-white text-sm font-bold rounded-xl hover:bg-green-700 shadow-sm">
+          <button onClick={() => onNext(correct, total)} className="w-full py-3 bg-green-600 text-white text-sm font-bold rounded-xl hover:bg-green-700 shadow-sm">
             Complete ✓
           </button>
         )}
@@ -2413,7 +2413,7 @@ function MatchingGame({ words, onNext }) {
           <p className="text-sm text-slate-500 mb-5">You matched all words!</p>
           <div className="flex gap-3">
             {!onNext && <button onClick={init} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-medium text-sm shadow-sm hover:bg-indigo-700">Play Again</button>}
-            {onNext  && <button onClick={onNext} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl text-sm shadow-sm hover:bg-indigo-700">Go to Step 3</button>}
+            {onNext  && <button onClick={() => onNext()} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl text-sm shadow-sm hover:bg-indigo-700">Go to Step 3</button>}
           </div>
         </div>
       ) : (
