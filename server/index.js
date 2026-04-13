@@ -684,9 +684,9 @@ app.get('/api/word-difficulty/recommend', async (req, res) => {
     if (!userId) return res.json({ words: [] });
     const n = parseInt(limit);
 
-    // Words with at least 2 attempts, sorted by wrong ratio desc
+    // Words where user has gotten at least one wrong
     const docs = await wordDifficultyCol
-      .find({ userId, $expr: { $gte: ['$wrongCount', 1] } })
+      .find({ userId, wrongCount: { $gte: 1 } })
       .sort({ wrongCount: -1, updatedAt: -1 })
       .limit(50)
       .toArray();
