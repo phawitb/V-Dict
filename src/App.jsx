@@ -787,6 +787,7 @@ const MY_VOCABS_META = { label: 'My Vocabs', color: 'from-indigo-500 to-violet-6
 
 function MyVocabsSession({ words, userId, onUpdateWord, onSaveWord, onBack, dueCount }) {
   const [activeGroup, setActiveGroup] = useState(null);
+  const [groupProgress, setGroupProgress] = useState({});
 
   const subGroups = useMemo(() => {
     const groups = [];
@@ -809,6 +810,7 @@ function MyVocabsSession({ words, userId, onUpdateWord, onSaveWord, onBack, dueC
         onSaveWord={onSaveWord}
         onUpdateWord={onUpdateWord}
         onBack={() => setActiveGroup(null)}
+        onGroupComplete={(idx, lvl) => setGroupProgress(prev => ({ ...prev, [idx]: lvl }))}
       />
     );
   }
@@ -835,24 +837,27 @@ function MyVocabsSession({ words, userId, onUpdateWord, onSaveWord, onBack, dueC
       ) : (
         <div className="space-y-2">
           {subGroups.map((group, idx) => {
-            const practiceData = (() => { try { return JSON.parse(localStorage.getItem(`sg_my_vocabs_${idx}_${userId}`)); } catch { return null; } })();
-            const doneToday    = practiceData?.date === today;
+            const practiceData  = (() => { try { return JSON.parse(localStorage.getItem(`sg_my_vocabs_${idx}_${userId}`)); } catch { return null; } })();
+            const doneToday     = practiceData?.date === today;
+            // groupProgress[idx] is set immediately in React state; practiceData is fallback from localStorage
+            const displayLevel  = groupProgress[idx] ?? practiceData?.level ?? 0;
+            const hasData       = groupProgress[idx] != null || practiceData != null;
             return (
               <button key={idx} onClick={() => setActiveGroup(idx)}
-                className={`w-full rounded-xl border p-3 text-left transition-all hover:shadow-md flex items-center gap-3 ${doneToday ? `${MY_VOCABS_META.bg} ${MY_VOCABS_META.border}` : 'bg-white border-slate-200 hover:border-indigo-200'}`}
+                className={`w-full rounded-xl border p-3 text-left transition-all hover:shadow-md flex items-center gap-3 ${doneToday || groupProgress[idx] != null ? `${MY_VOCABS_META.bg} ${MY_VOCABS_META.border}` : 'bg-white border-slate-200 hover:border-indigo-200'}`}
               >
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm font-black flex-none ${doneToday ? `bg-gradient-to-br ${MY_VOCABS_META.color} text-white` : 'bg-slate-100 text-slate-500'}`}>
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm font-black flex-none ${doneToday || groupProgress[idx] != null ? `bg-gradient-to-br ${MY_VOCABS_META.color} text-white` : 'bg-slate-100 text-slate-500'}`}>
                   {idx + 1}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-slate-700 truncate">{group[0]?.word} – {group[group.length - 1]?.word}</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     {[0,1,2,3,4].map(i => (
-                      <span key={i} className={`w-1.5 h-1.5 rounded-full ${practiceData?.level > i ? 'bg-green-400' : 'bg-slate-200'}`} />
+                      <span key={i} className={`w-1.5 h-1.5 rounded-full ${displayLevel > i ? 'bg-green-400' : 'bg-slate-200'}`} />
                     ))}
-                    {practiceData && (
-                      <span className={`text-[10px] font-bold ml-1 ${doneToday ? MY_VOCABS_META.text : 'text-slate-400'}`}>
-                        {doneToday ? '✓ Today' : practiceData.date}
+                    {hasData && (
+                      <span className={`text-[10px] font-bold ml-1 ${doneToday || groupProgress[idx] != null ? MY_VOCABS_META.text : 'text-slate-400'}`}>
+                        {doneToday || groupProgress[idx] != null ? '✓ Today' : practiceData?.date}
                       </span>
                     )}
                   </div>
@@ -877,6 +882,7 @@ function LevelStudySession({ level, levelMeta, userId, onSaveWord, onUpdateWord,
   const [total, setTotal]               = useState(0);
   const [loading, setLoading]           = useState(true);
   const [activeGroup, setActiveGroup]   = useState(null);
+  const [groupProgress, setGroupProgress] = useState({});
 
   const fetchData = async () => {
     setLoading(true);
@@ -926,6 +932,7 @@ function LevelStudySession({ level, levelMeta, userId, onSaveWord, onUpdateWord,
         }}
         onUpdateWord={onUpdateWord}
         onBack={() => setActiveGroup(null)}
+        onGroupComplete={(idx, lvl) => setGroupProgress(prev => ({ ...prev, [idx]: lvl }))}
       />
     );
   }
@@ -960,18 +967,20 @@ function LevelStudySession({ level, levelMeta, userId, onSaveWord, onUpdateWord,
       {/* Sub-group list */}
       <div className="space-y-2">
         {subGroups.map((group, idx) => {
-          const savedCount    = group.filter(w => savedSet.has(w.toLowerCase())).length;
           const practiceData  = (() => { try { return JSON.parse(localStorage.getItem(`sg_${level}_${idx}_${userId}`)); } catch { return null; } })();
           const today         = new Date().toISOString().split('T')[0];
           const doneToday     = practiceData?.date === today;
+          // groupProgress[idx] is set immediately via React state; practiceData is fallback from localStorage
+          const displayLevel  = groupProgress[idx] ?? practiceData?.level ?? 0;
+          const hasData       = groupProgress[idx] != null || practiceData != null;
 
           return (
             <button
               key={idx}
               onClick={() => setActiveGroup(idx)}
-              className={`w-full rounded-xl border p-3 text-left transition-all hover:shadow-md flex items-center gap-3 ${doneToday ? `${levelMeta.bg} ${levelMeta.border}` : 'bg-white border-slate-200 hover:border-indigo-200'}`}
+              className={`w-full rounded-xl border p-3 text-left transition-all hover:shadow-md flex items-center gap-3 ${doneToday || groupProgress[idx] != null ? `${levelMeta.bg} ${levelMeta.border}` : 'bg-white border-slate-200 hover:border-indigo-200'}`}
             >
-              <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm font-black flex-none ${doneToday ? `bg-gradient-to-br ${levelMeta.color} text-white` : 'bg-slate-100 text-slate-500'}`}>
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm font-black flex-none ${doneToday || groupProgress[idx] != null ? `bg-gradient-to-br ${levelMeta.color} text-white` : 'bg-slate-100 text-slate-500'}`}>
                 {idx + 1}
               </div>
               <div className="flex-1 min-w-0">
@@ -980,11 +989,11 @@ function LevelStudySession({ level, levelMeta, userId, onSaveWord, onUpdateWord,
                 </p>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   {[0,1,2,3,4].map(i => (
-                    <span key={i} className={`w-1.5 h-1.5 rounded-full ${practiceData?.level > i ? 'bg-green-400' : 'bg-slate-200'}`} />
+                    <span key={i} className={`w-1.5 h-1.5 rounded-full ${displayLevel > i ? 'bg-green-400' : 'bg-slate-200'}`} />
                   ))}
-                  {practiceData && (
-                    <span className={`text-[10px] font-bold ml-1 ${doneToday ? levelMeta.text : 'text-slate-400'}`}>
-                      {doneToday ? '✓ Today' : practiceData.date}
+                  {hasData && (
+                    <span className={`text-[10px] font-bold ml-1 ${doneToday || groupProgress[idx] != null ? levelMeta.text : 'text-slate-400'}`}>
+                      {doneToday || groupProgress[idx] != null ? '✓ Today' : practiceData?.date}
                     </span>
                   )}
                 </div>
@@ -1118,7 +1127,7 @@ function WordListPreview({ words, onNext }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // SubGroupPractice — practice a group of 5 words through 4 stages
 // ═════════════════════════════════════════════════════════════════════════════
-function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, savedWords, onSaveWord, onUpdateWord, onBack, initialWords }) {
+function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, savedWords, onSaveWord, onUpdateWord, onBack, onGroupComplete, initialWords }) {
   const [words, setWords]     = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
@@ -1172,12 +1181,14 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
     const totalQ       = allScores.reduce((s, x) => s + x.total, 0);
     // level 1-5 proportional to score; always at least 1 after completing
     const level        = totalQ > 0 ? Math.max(1, Math.round((totalCorrect / totalQ) * 5)) : 1;
-    localStorage.setItem(`sg_${lessonKey}_${groupIdx}_${userId}`, JSON.stringify({
+    const record = {
       date: new Date().toISOString().split('T')[0],
       score: totalCorrect,
       total: totalQ,
       level,
-    }));
+    };
+    localStorage.setItem(`sg_${lessonKey}_${groupIdx}_${userId}`, JSON.stringify(record));
+    onGroupComplete?.(groupIdx, level);   // notify parent to update React state
     onBack();
   };
 
