@@ -41,6 +41,7 @@ let configCol;
 let adminsCol;
 let wordleScoresCol;
 let storiesCol;
+let userDailyCol;
 
 const INITIAL_ADMIN = 'phawit.boo@gmail.com';
 
@@ -57,8 +58,11 @@ async function connectDB() {
 
   wordleScoresCol  = db.collection('wordle_scores');
   storiesCol       = db.collection('stories');
+  userDailyCol     = db.collection('user_daily');
 
   await wordsCol.createIndex({ userId: 1, word: 1 }, { unique: true });
+  await userDailyCol.createIndex({ userId: 1, date: 1 }, { unique: true });
+  await userDailyCol.createIndex({ userId: 1 });
   await wordCacheCol.createIndex({ word: 1 }, { unique: true });
   await vocabBankCol.createIndex({ word: 1 }, { unique: true }).catch(() => {});
   await dailyCol.createIndex({ date: 1 }, { unique: true });
@@ -106,6 +110,43 @@ async function callGeminiServer(systemPrompt, userPrompt) {
   if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
   const data = await res.json();
   return JSON.parse(data.candidates[0].content.parts[0].text);
+}
+
+// ── Pre-generate wordle words 30 days ahead ───────────────────────────────────
+async function ensureWordleCalendar() {
+  try {
+    const today = new Date();
+    const dates = [];
+    for (let i = 0; i <= 30; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() + i);
+      dates.push(d.toISOString().split('T')[0]);
+    }
+    const existing = await dailyCol
+      .find({ date: { $in: dates }, wordle: { $exists: true } })
+      .project({ date: 1, _id: 0 })
+      .toArray();
+    const existingDates = new Set(existing.map(d => d.date));
+    const missing = dates.filter(d => !existingDates.has(d));
+    if (!missing.length) return;
+
+    for (const dateStr of missing) {
+      const seed = parseInt(dateStr.replace(/-/g, '')) % 9973;
+      const [wordleDoc] = await vocabBankCol
+        .find({ word: { $regex: '^[a-z]{5}$' } })
+        .skip(seed)
+        .limit(1)
+        .toArray();
+      const wordle = wordleDoc?.word || 'study';
+      await dailyCol.updateOne(
+        { date: dateStr },
+        { $setOnInsert: { date: dateStr, wordle, createdAt: Date.now() } },
+        { upsert: true },
+      ).catch(() => {});
+    }
+  } catch (e) {
+    console.error('ensureWordleCalendar error:', e.message);
+  }
 }
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -270,32 +311,118 @@ app.post('/api/word-cache', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/daily — global 5 words + wordle word (generated once/day, shared by all)
+// GET /api/daily?userId=xxx — per-user 5 words from lessons + global wordle word
 app.get('/api/daily', async (req, res) => {
   const today = new Date().toISOString().split('T')[0];
+  const { userId } = req.query;
+
   try {
-    const existing = await dailyCol.findOne({ date: today });
-    if (existing) return res.json({ words: existing.words, wordle: existing.wordle });
+    // Ensure 30 days of wordle words (non-blocking)
+    ensureWordleCalendar().catch(console.error);
+
+    // Get (or generate) today's global wordle word
+    let wordle = 'study';
+    const todayDoc = await dailyCol.findOne({ date: today });
+    if (todayDoc?.wordle) {
+      wordle = todayDoc.wordle;
+    } else {
+      const seed = parseInt(today.replace(/-/g, '')) % 9973;
+      const [wordleDoc] = await vocabBankCol
+        .find({ word: { $regex: '^[a-z]{5}$' } })
+        .skip(seed).limit(1).toArray();
+      wordle = wordleDoc?.word || 'study';
+      await dailyCol.updateOne(
+        { date: today },
+        { $setOnInsert: { date: today, wordle, createdAt: Date.now() } },
+        { upsert: true },
+      ).catch(() => {});
+    }
+
+    // ── Per-user daily words from lessons ──────────────────────────────────────
+    if (userId) {
+      // Return cached user daily if exists
+      const userToday = await userDailyCol.findOne({ userId, date: today });
+      if (userToday?.words?.length) return res.json({ words: userToday.words, wordle });
+
+      // Words seen in all previous daily sessions
+      const userHistory = await userDailyCol.find({ userId }, { projection: { wordKeys: 1 } }).toArray();
+      const seenWords   = new Set(userHistory.flatMap(d => d.wordKeys || []));
+
+      // All vocab_levels words not yet seen by this user
+      const allLessonDocs  = await vocabLevelsCol.find({}).project({ word: 1, _id: 0 }).toArray();
+      const unseenWords    = allLessonDocs.filter(d => !seenWords.has(d.word.toLowerCase())).map(d => d.word);
+
+      let words;
+      if (unseenWords.length >= 5) {
+        // Pick 5 random unseen lesson words
+        const shuffled       = [...unseenWords].sort(() => Math.random() - 0.5);
+        const selectedKeys   = shuffled.slice(0, 5).map(w => w.toLowerCase());
+
+        // Look up word data from cache
+        const cachedDocs = await wordCacheCol.find({ word: { $in: selectedKeys } }).toArray();
+        const cachedMap  = {};
+        cachedDocs.forEach(d => { const { _id, ...rest } = d; cachedMap[d.word] = rest; });
+        const missing = selectedKeys.filter(k => !cachedMap[k]);
+
+        if (missing.length) {
+          const sys = `You are an English-Thai dictionary. Return ONLY valid JSON:
+          {"words":[{"word":"string","phonetic":"string","partOfSpeech":"string","thaiTranslation":"string","examples":[{"en":"string (wrap word in <b> tags)","th":"string"},{"en":"string (wrap word in <b> tags)","th":"string"}]}]}
+          Provide entries for exactly these words (preserve original casing).`;
+          const result      = await callGeminiServer(sys, `Dictionary entries for: ${missing.join(', ')}`);
+          const geminiWords = (result?.words || []).map(w => ({ ...w, word: w.word.toLowerCase() }));
+          if (geminiWords.length) {
+            const ops = geminiWords.map(w => ({
+              updateOne: {
+                filter: { word: w.word },
+                update: { $setOnInsert: { ...w, cachedAt: Date.now() } },
+                upsert: true,
+              },
+            }));
+            await wordCacheCol.bulkWrite(ops, { ordered: false }).catch(() => {});
+            geminiWords.forEach(w => { cachedMap[w.word] = w; });
+          }
+        }
+
+        words = selectedKeys
+          .map(k => cachedMap[k])
+          .filter(Boolean)
+          .map(w => ({ ...w, id: w.word }));
+
+        await userDailyCol.updateOne(
+          { userId, date: today },
+          { $setOnInsert: { userId, date: today, words, wordKeys: selectedKeys, createdAt: Date.now() } },
+          { upsert: true },
+        ).catch(() => {});
+      } else {
+        // All lesson words seen — generate fresh with Gemini
+        const sys = `You are an English-Thai dictionary. Return ONLY valid JSON:
+        {"words":[{"word":"string","phonetic":"string","partOfSpeech":"string","thaiTranslation":"string","examples":[{"en":"string (wrap word in <b> tags)","th":"string"},{"en":"string (wrap word in <b> tags)","th":"string"}]}]}
+        Exactly 5 interesting/useful English vocabulary words, 2 examples each.`;
+        const result = await callGeminiServer(sys, 'Generate 5 useful English vocabulary words for daily learning.');
+        words        = (result.words || []).map(w => ({ ...w, id: w.word }));
+        await userDailyCol.updateOne(
+          { userId, date: today },
+          { $setOnInsert: { userId, date: today, words, wordKeys: words.map(w => w.word.toLowerCase()), createdAt: Date.now() } },
+          { upsert: true },
+        ).catch(() => {});
+      }
+
+      return res.json({ words, wordle });
+    }
+
+    // ── Legacy: no userId — return/generate global daily words ────────────────
+    if (todayDoc?.words) return res.json({ words: todayDoc.words, wordle });
 
     const sys = `You are an English-Thai dictionary. Return ONLY valid JSON:
     {"words":[{"word":"string","phonetic":"string","partOfSpeech":"string","thaiTranslation":"string","examples":[{"en":"string (wrap word in <b> tags)","th":"string"},{"en":"string (wrap word in <b> tags)","th":"string"}]}]}
     Exactly 5 interesting/useful English vocabulary words, 2 examples each.`;
     const result = await callGeminiServer(sys, 'Generate 5 useful English vocabulary words for daily learning.');
-    const words = (result.words || []).map(w => ({ ...w, id: w.word }));
-
-    const seed = parseInt(today.replace(/-/g, '')) % 9973;
-    const [wordleDoc] = await vocabBankCol
-      .find({ word: { $regex: '^[a-z]{5}$' } })
-      .skip(seed)
-      .limit(1)
-      .toArray();
-    const wordle = wordleDoc?.word || words.find(w => w.word.length === 5)?.word || 'study';
-
+    const words  = (result.words || []).map(w => ({ ...w, id: w.word }));
     await dailyCol.updateOne(
       { date: today },
-      { $setOnInsert: { date: today, words, wordle, createdAt: Date.now() } },
+      { $set: { words } },
       { upsert: true },
-    );
+    ).catch(() => {});
 
     res.json({ words, wordle });
   } catch (e) {
@@ -346,8 +473,12 @@ app.post('/api/story', async (req, res) => {
 // GET /api/wordle/history?limit=7
 app.get('/api/wordle/history', async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit || 7), 30);
+  const today = new Date().toISOString().split('T')[0];
   try {
-    const days = await dailyCol.find({ wordle: { $exists: true } })
+    // Ensure wordle calendar is filled (non-blocking)
+    ensureWordleCalendar().catch(console.error);
+    const days = await dailyCol
+      .find({ wordle: { $exists: true }, date: { $lte: today } })
       .sort({ date: -1 })
       .limit(limit)
       .project({ date: 1, wordle: 1, _id: 0 })
@@ -472,6 +603,8 @@ app.get('/api/health', (_, res) => res.json({ ok: true }));
 // ── Start ─────────────────────────────────────────────────────────────────────
 connectDB().then(() => {
   app.listen(PORT, () => console.log(`🚀 Server on http://localhost:${PORT}`));
+  // Pre-generate wordle words for next 30 days on startup
+  ensureWordleCalendar().catch(console.error);
 }).catch(e => {
   console.error('❌ MongoDB connection failed:', e.message);
   process.exit(1);

@@ -350,6 +350,20 @@ function HighlightedText({ text }) {
   );
 }
 
+// ─── BoldText — renders <b> tags as bold, same text color ─────────────────────
+function BoldText({ text }) {
+  if (!text) return null;
+  if (typeof text !== 'string') return <span>{String(text)}</span>;
+  const parts = text.split(/<b>(.*?)<\/b>/gi);
+  return (
+    <span>
+      {parts.map((part, i) =>
+        i % 2 === 1 ? <strong key={i}>{part}</strong> : part
+      )}
+    </span>
+  );
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // FindView
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1038,11 +1052,64 @@ function SubGroupAIStory({ words, onNext }) {
         </h3>
         <p className="text-slate-800 text-base leading-relaxed mb-4"><HighlightedText text={story.englishStory} /></p>
         <div className="bg-white/60 p-4 rounded-xl border border-indigo-100/50">
-          <p className="text-slate-600 text-sm leading-relaxed">{story.thaiTranslation}</p>
+          <p className="text-slate-600 text-sm leading-relaxed"><BoldText text={story.thaiTranslation} /></p>
         </div>
       </div>
       <button onClick={onNext} className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 text-sm">
         Continue to SRS Review →
+      </button>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// WordListPreview — shows all words in group before starting practice
+// ═════════════════════════════════════════════════════════════════════════════
+function WordListPreview({ words, onNext }) {
+  const [expandedIdx, setExpandedIdx] = useState(null);
+
+  return (
+    <div className="space-y-3 animate-in fade-in">
+      <p className="text-center text-sm text-slate-500">ดูคำศัพท์ทั้งหมดก่อนเริ่มฝึก</p>
+      <div className="space-y-2">
+        {words.map((w, i) => {
+          const isExpanded = expandedIdx === i;
+          return (
+            <div key={i} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              <div
+                className="p-3.5 cursor-pointer flex justify-between items-center hover:bg-slate-50 transition-colors"
+                onClick={() => setExpandedIdx(isExpanded ? null : i)}
+              >
+                <div className="flex-1 overflow-hidden pr-2">
+                  <div className="font-bold text-base text-slate-800 capitalize flex items-baseline gap-2 mb-0.5 truncate">
+                    {w.word} <span className="text-xs text-slate-400 font-mono font-normal">{w.phonetic}</span>
+                  </div>
+                  <div className="text-slate-600 text-sm truncate">
+                    <span className="text-indigo-500 italic font-medium mr-1.5">{getShortPOS(w.partOfSpeech)}</span>
+                    {w.thaiTranslation}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={e => { e.stopPropagation(); playAudio(w.word); }} className="p-1.5 text-indigo-500 hover:bg-indigo-100 rounded-lg">
+                    <Volume2 className="w-4 h-4" />
+                  </button>
+                  <ChevronDown className={`w-4 h-4 text-slate-300 transition-transform ${isExpanded ? 'rotate-180 text-indigo-400' : ''}`} />
+                </div>
+              </div>
+              {isExpanded && (
+                <div className="p-3 bg-slate-50 border-t border-slate-100 animate-in slide-in-from-top-1 fade-in">
+                  <WordCard result={w} hideHeader />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <button
+        onClick={onNext}
+        className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 text-sm"
+      >
+        เริ่ม Step 1: Flashcards →
       </button>
     </div>
   );
@@ -1102,7 +1169,8 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
     const allScores   = [...stageScores, { score, total }];
     const totalCorrect = allScores.reduce((s, x) => s + x.score, 0);
     const totalQ       = allScores.reduce((s, x) => s + x.total, 0);
-    const level        = totalQ > 0 ? Math.round((totalCorrect / totalQ) * 5) : 0;
+    // Always at least 1 so dots show progress after completing
+    const level        = totalQ > 0 ? Math.max(1, Math.round((totalCorrect / totalQ) * 5)) : 1;
     localStorage.setItem(`sg_${lessonKey}_${groupIdx}_${userId}`, JSON.stringify({
       date: new Date().toISOString().split('T')[0],
       score: totalCorrect,
@@ -1134,7 +1202,8 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
   if (!words?.length) return null;
 
   const stages = [
-    { label: 'Step 1: Flashcards',      icon: <Layers className="w-4 h-4" />,       el: <FlashcardGame      words={words} onNext={next} /> },
+    { label: 'Words in This Group',     icon: <BookOpen className="w-4 h-4" />,      el: <WordListPreview    words={words} onNext={next} /> },
+    { label: 'Step 1: Flashcards',      icon: <Layers className="w-4 h-4" />,        el: <FlashcardGame      words={words} onNext={next} /> },
     { label: 'Step 2: Match',           icon: <RefreshCw className="w-4 h-4" />,     el: <MatchingGame       words={words} onNext={next} /> },
     { label: 'Step 3: Multiple Choice', icon: <CheckCircle className="w-4 h-4" />,   el: <MultipleChoiceGame words={words} onNext={next} /> },
     { label: 'Step 4: Fill in Blank',   icon: <Edit3 className="w-4 h-4" />,         el: <TypingGame         words={words} onNext={next} /> },
@@ -1753,7 +1822,7 @@ function WordOfTheDayView({ onSave, savedWords, user }) {
     fetchingRef.current = true;
     (async () => {
       const today    = new Date().toISOString().split('T')[0];
-      const cacheKey = `wotd_global_${today}`;
+      const cacheKey = `wotd_${user?.sub}_${today}`;
       const cached   = localStorage.getItem(cacheKey);
 
       if (cached) {
@@ -1765,7 +1834,8 @@ function WordOfTheDayView({ onSave, savedWords, user }) {
       }
 
       try {
-        const res = await fetch(`${API_BASE}/api/daily`);
+        const uid = user?.sub ? `?userId=${encodeURIComponent(user.sub)}` : '';
+        const res = await fetch(`${API_BASE}/api/daily${uid}`);
         if (!res.ok) throw new Error('Failed to load daily');
         const { words, wordle } = await res.json();
         localStorage.setItem(cacheKey, JSON.stringify({ words, wordle }));
@@ -2060,7 +2130,7 @@ function AIStoryGame({ words }) {
             </h3>
             <p className="text-slate-800 text-base leading-relaxed mb-4"><HighlightedText text={story.englishStory} /></p>
             <div className="bg-white/60 p-4 rounded-xl border border-indigo-100/50">
-              <p className="text-slate-600 text-sm leading-relaxed">{story.thaiTranslation}</p>
+              <p className="text-slate-600 text-sm leading-relaxed"><BoldText text={story.thaiTranslation} /></p>
             </div>
           </div>
           <button onClick={() => { setStory(null); setSelected([]); }}
@@ -2220,12 +2290,13 @@ function MatchingGame({ words, onNext }) {
 function MultipleChoiceGame({ words, onNext }) {
   if (words.length < 4) return <NoWordsMessage min={4} />;
 
-  const [questions, setQs]      = useState([]);
-  const [cidx, setCidx]         = useState(0);
-  const [score, setScore]       = useState(0);
-  const [showRes, setShowRes]   = useState(false);
-  const [selAns, setSelAns]     = useState(null);
+  const [questions, setQs]        = useState([]);
+  const [cidx, setCidx]           = useState(0);
+  const [score, setScore]         = useState(0);
+  const [showRes, setShowRes]     = useState(false);
+  const [selAns, setSelAns]       = useState(null);
   const [hintShown, setHintShown] = useState(-1);
+  const [showNext, setShowNext]   = useState(false);
 
   const gen = () => {
     const picked = [...words].sort(() => 0.5 - Math.random()).slice(0, Math.min(5, words.length));
@@ -2233,23 +2304,39 @@ function MultipleChoiceGame({ words, onNext }) {
       const exHtml  = tw.examples?.[0]?.en || `This is a <b>${tw.word}</b>.`;
       const plain   = exHtml.replace(/<\/?b>/gi, '');
       const blanked = plain.replace(new RegExp(`\\b${tw.word}\\b`, 'gi'), '________');
-      const opts    = [tw.word, ...words.filter(w => w.word !== tw.word).sort(() => 0.5 - Math.random()).slice(0, 3).map(w => w.word)].sort(() => 0.5 - Math.random());
+      // options are lowercase
+      const opts    = [
+        tw.word.toLowerCase(),
+        ...words.filter(w => w.word.toLowerCase() !== tw.word.toLowerCase())
+          .sort(() => 0.5 - Math.random()).slice(0, 3).map(w => w.word.toLowerCase()),
+      ].sort(() => 0.5 - Math.random());
       const thHint  = (tw.examples?.[0]?.th || '').replace(/<b>(.*?)<\/b>/gi, '{$1}');
       return { tw, sentence: blanked, opts, thHint };
     }));
-    setCidx(0); setScore(0); setShowRes(false); setSelAns(null); setHintShown(-1);
+    setCidx(0); setScore(0); setShowRes(false); setSelAns(null); setHintShown(-1); setShowNext(false);
   };
 
   useEffect(gen, [words]);
 
+  const goNext = () => {
+    if (cidx + 1 < questions.length) { setCidx(c => c + 1); setSelAns(null); setShowNext(false); }
+    else setShowRes(true);
+  };
+
   const answer = (opt) => {
     if (selAns) return;
     setSelAns(opt);
-    if (opt === questions[cidx].tw.word) setScore(s => s + 1);
-    setTimeout(() => {
-      if (cidx + 1 < questions.length) { setCidx(c => c + 1); setSelAns(null); }
-      else setShowRes(true);
-    }, 1500);
+    if (opt === questions[cidx].tw.word.toLowerCase()) {
+      setScore(s => s + 1);
+      // auto-advance after correct
+      setTimeout(() => {
+        if (cidx + 1 < questions.length) { setCidx(c => c + 1); setSelAns(null); setShowNext(false); }
+        else setShowRes(true);
+      }, 1000);
+    } else {
+      // wrong: user must click Next
+      setShowNext(true);
+    }
   };
 
   if (!questions.length) return null;
@@ -2280,13 +2367,18 @@ function MultipleChoiceGame({ words, onNext }) {
         {q.opts.map((opt, i) => {
           let cls = 'bg-white border-2 border-slate-200 text-slate-700 hover:border-indigo-400 hover:bg-indigo-50 shadow-sm';
           if (ok) {
-            if (opt === q.tw.word)   cls = 'bg-green-100 border-green-500 text-green-700 font-bold';
-            else if (opt === selAns) cls = 'bg-red-100 border-red-500 text-red-700';
-            else                     cls = 'bg-slate-50 border-slate-100 text-slate-400 opacity-50';
+            if (opt === q.tw.word.toLowerCase()) cls = 'bg-green-100 border-green-500 text-green-700 font-bold';
+            else if (opt === selAns)             cls = 'bg-red-100 border-red-500 text-red-700';
+            else                                 cls = 'bg-slate-50 border-slate-100 text-slate-400 opacity-50';
           }
-          return <button key={i} disabled={ok} onClick={() => answer(opt)} className={`p-3.5 rounded-xl text-base capitalize transition-all ${cls}`}>{opt}</button>;
+          return <button key={i} disabled={ok} onClick={() => answer(opt)} className={`p-3.5 rounded-xl text-base transition-all ${cls}`}>{opt}</button>;
         })}
       </div>
+      {ok && showNext && (
+        <button onClick={goNext} className="mt-4 w-full py-3 bg-slate-700 text-white rounded-xl font-bold text-sm hover:bg-slate-800 transition-colors">
+          Next →
+        </button>
+      )}
     </div>
   );
 }
