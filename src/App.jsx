@@ -1122,8 +1122,9 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
   const [words, setWords]     = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
-  const [stage, setStage]         = useState(0);
-  const [stageScores, setStageScores] = useState([]);
+  const [stage, setStage]     = useState(0);
+  // useRef avoids stale-closure issue — onComplete always reads current accumulated scores
+  const stageScoresRef        = useRef([]);
 
   useEffect(() => {
     if (initialWords?.length) {
@@ -1166,10 +1167,10 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
   }, []);
 
   const onComplete = (score = 0, total = 0) => {
-    const allScores   = [...stageScores, { score, total }];
+    const allScores    = [...stageScoresRef.current, { score, total }];
     const totalCorrect = allScores.reduce((s, x) => s + x.score, 0);
     const totalQ       = allScores.reduce((s, x) => s + x.total, 0);
-    // Always at least 1 so dots show progress after completing
+    // level 1-5 proportional to score; always at least 1 after completing
     const level        = totalQ > 0 ? Math.max(1, Math.round((totalCorrect / totalQ) * 5)) : 1;
     localStorage.setItem(`sg_${lessonKey}_${groupIdx}_${userId}`, JSON.stringify({
       date: new Date().toISOString().split('T')[0],
@@ -1181,7 +1182,7 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
   };
 
   const next = (score = 0, total = 0) => {
-    if (total > 0) setStageScores(prev => [...prev, { score, total }]);
+    if (total > 0) stageScoresRef.current = [...stageScoresRef.current, { score, total }];
     setStage(s => s + 1);
   };
 
@@ -2396,6 +2397,7 @@ function TypingGame({ words, onNext }) {
   const [input, setInput]     = useState('');
   const [fb, setFb]           = useState(null);
   const [hint, setHint]       = useState(false);
+  const [showNext, setShowNext] = useState(false);
 
   const gen = () => {
     const picked = [...words].sort(() => 0.5 - Math.random()).slice(0, Math.min(5, words.length));
@@ -2405,21 +2407,32 @@ function TypingGame({ words, onNext }) {
       const blanked = plain.replace(new RegExp(`\\b${tw.word}\\b`, 'gi'), '________');
       return { tw, sentence: blanked };
     }));
-    setCidx(0); setScore(0); setShowRes(false); setInput(''); setFb(null); setHint(false);
+    setCidx(0); setScore(0); setShowRes(false); setInput(''); setFb(null); setHint(false); setShowNext(false);
   };
 
   useEffect(gen, [words]);
+
+  const goNext = () => {
+    if (cidx + 1 < questions.length) { setCidx(c => c + 1); setInput(''); setFb(null); setHint(false); setShowNext(false); }
+    else setShowRes(true);
+  };
 
   const submit = e => {
     e.preventDefault();
     if (fb || !input.trim()) return;
     const correct = input.toLowerCase().trim() === questions[cidx].tw.word.toLowerCase();
     setFb(correct ? 'correct' : 'incorrect');
-    if (correct) setScore(s => s + 1);
-    setTimeout(() => {
-      if (cidx + 1 < questions.length) { setCidx(c => c + 1); setInput(''); setFb(null); setHint(false); }
-      else setShowRes(true);
-    }, 2000);
+    if (correct) {
+      setScore(s => s + 1);
+      // auto-advance on correct
+      setTimeout(() => {
+        if (cidx + 1 < questions.length) { setCidx(c => c + 1); setInput(''); setFb(null); setHint(false); setShowNext(false); }
+        else setShowRes(true);
+      }, 1000);
+    } else {
+      // wrong: user must press Next
+      setShowNext(true);
+    }
   };
 
   if (!questions.length) return null;
@@ -2465,6 +2478,11 @@ function TypingGame({ words, onNext }) {
           </div>
         )}
         {!fb && <button type="submit" disabled={!input.trim()} className="w-full mt-3 py-3.5 bg-indigo-600 text-white text-base font-bold rounded-xl hover:bg-indigo-700 disabled:bg-indigo-300 shadow-sm">Check Answer</button>}
+        {fb === 'incorrect' && showNext && (
+          <button type="button" onClick={goNext} className="w-full mt-3 py-3 bg-slate-700 text-white rounded-xl font-bold text-sm hover:bg-slate-800 transition-colors">
+            Next →
+          </button>
+        )}
       </form>
     </div>
   );
