@@ -193,7 +193,7 @@ export default function App() {
   const [headerTitle, setHeaderTitle]     = useState(null);
   const [findFocusTrigger, setFindFocusTrigger] = useState(0);
 
-  const TAB_TITLES = { find: 'ค้นหาคำ', vocabs: 'คำศัพท์ของฉัน', learning: 'เรียน', wotd: 'รายวัน', profile: 'โปรไฟล์', admin: 'แอดมิน' };
+  const TAB_TITLES = { find: 'Find Word', vocabs: 'My Vocabs', learning: 'Learn', wotd: 'Daily', profile: 'Profile', admin: 'Admin' };
   const switchTab = (tab) => { setActiveTab(tab); setHeaderTitle(null); };
 
   // Load words when user is available
@@ -292,8 +292,8 @@ export default function App() {
       {/* Bottom Nav — always fixed */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-20 safe-bottom">
         <div className="flex justify-around items-center max-w-4xl mx-auto p-2">
-          <NavButton icon={<Book />}   label="คำศัพท์"  active={activeTab === 'vocabs'}   onClick={() => switchTab('vocabs')} />
-          <NavButton icon={<Layers />} label="เรียน"   active={activeTab === 'learning'} onClick={() => switchTab('learning')} badge={dueCount > 0 ? dueCount : null} />
+          <NavButton icon={<Book />}   label="Vocabs"  active={activeTab === 'vocabs'}   onClick={() => switchTab('vocabs')} />
+          <NavButton icon={<Layers />} label="Learn"   active={activeTab === 'learning'} onClick={() => switchTab('learning')} badge={dueCount > 0 ? dueCount : null} />
 
           <button
             onClick={() => { switchTab('find'); setFindFocusTrigger(t => t + 1); }}
@@ -304,8 +304,8 @@ export default function App() {
             <Search className="w-6 h-6 md:w-7 md:h-7" />
           </button>
 
-          <NavButton icon={<Sun />}  label="รายวัน"   active={activeTab === 'wotd'}    onClick={() => switchTab('wotd')} />
-          <NavButton icon={<User />} label="โปรไฟล์" active={activeTab === 'profile' || activeTab === 'admin'} onClick={() => switchTab('profile')} />
+          <NavButton icon={<Sun />}  label="Daily"   active={activeTab === 'wotd'}    onClick={() => switchTab('wotd')} />
+          <NavButton icon={<User />} label="Profile" active={activeTab === 'profile' || activeTab === 'admin'} onClick={() => switchTab('profile')} />
         </div>
       </nav>
     </div>
@@ -1116,7 +1116,7 @@ function WordListPreview({ words, onNext }) {
 
   return (
     <div className="space-y-3 animate-in fade-in">
-      <p className="text-center text-sm text-slate-500">ดูคำศัพท์ทั้งหมดก่อนเริ่มฝึก</p>
+      <p className="text-center text-sm text-slate-500">Review all words before you start</p>
       <div className="space-y-2">
         {words.map((w, i) => {
           const isExpanded = expandedIdx === i;
@@ -1155,7 +1155,7 @@ function WordListPreview({ words, onNext }) {
         onClick={() => onNext()}
         className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 text-sm"
       >
-        เริ่ม Step 1: Flashcards →
+        Start Step 1: Flashcards →
       </button>
     </div>
   );
@@ -1187,7 +1187,7 @@ function CompletionSummary({ summary, levelMeta, onClose }) {
           ))}
         </div>
         <p className="text-4xl font-black">{pct}%</p>
-        <p className="text-sm opacity-75 mt-1">{totalCorrect} ถูก / {totalWrong} ผิด</p>
+        <p className="text-sm opacity-75 mt-1">{totalCorrect} correct / {totalWrong} wrong</p>
       </div>
 
       {/* Score ring */}
@@ -1213,11 +1213,11 @@ function CompletionSummary({ summary, levelMeta, onClose }) {
           <div className="flex-1 grid grid-cols-2 gap-2">
             <div className="bg-green-50 border border-green-100 rounded-xl p-3 text-center">
               <p className="text-2xl font-black text-green-600">{totalCorrect}</p>
-              <p className="text-[11px] text-green-500 font-semibold">ถูก</p>
+              <p className="text-[11px] text-green-500 font-semibold">Correct</p>
             </div>
             <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-center">
               <p className="text-2xl font-black text-red-500">{totalWrong}</p>
-              <p className="text-[11px] text-red-400 font-semibold">ผิด</p>
+              <p className="text-[11px] text-red-400 font-semibold">Wrong</p>
             </div>
           </div>
         </div>
@@ -1226,7 +1226,7 @@ function CompletionSummary({ summary, levelMeta, onClose }) {
       {/* Task breakdown */}
       {(mcScore || typingScore) && (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-3">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">แต่ละ Task</p>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Per Task</p>
           {mcScore && (
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center flex-none">
@@ -1263,7 +1263,7 @@ function CompletionSummary({ summary, levelMeta, onClose }) {
       {/* CTA */}
       <button onClick={onClose}
         className={`w-full py-4 rounded-2xl font-black text-white shadow-lg text-sm bg-gradient-to-r ${levelMeta.color} hover:opacity-90 transition-opacity`}>
-        กลับไปหน้า Groups →
+        Back to Groups →
       </button>
     </div>
   );
@@ -2044,7 +2044,7 @@ function WordOfTheDayView({ onSave, savedWords, user, onUpdateWord }) {
     finally { setSessionLoading(false); }
   };
 
-  const RECOMMENDED_META = { label: 'คำที่ต้องทบทวน', color: 'from-rose-500 to-pink-600', bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-700', icon: '🧠' };
+  const RECOMMENDED_META = { label: 'Recommended Review', color: 'from-rose-500 to-pink-600', bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-700', icon: '🧠' };
 
   if (activeSession) {
     const isRecommended = activeSession.lessonKey === 'recommended';
@@ -2099,10 +2099,10 @@ function WordOfTheDayView({ onSave, savedWords, user, onUpdateWord }) {
               <div className="bg-white rounded-2xl border border-rose-100 shadow-sm p-4 space-y-3 animate-in fade-in">
                 <div className="flex items-center gap-2">
                   <Brain className="w-4 h-4 text-rose-500" />
-                  <p className="text-sm font-bold text-slate-700">ระบบแนะนำ</p>
-                  <span className="ml-auto text-xs text-rose-600 font-bold bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-full">{recommendedWords.length} คำ</span>
+                  <p className="text-sm font-bold text-slate-700">Recommended Review</p>
+                  <span className="ml-auto text-xs text-rose-600 font-bold bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-full">{recommendedWords.length} words</span>
                 </div>
-                <p className="text-xs text-slate-400">คำที่คุณตอบผิดบ่อย — ลองฝึกซ้ำ!</p>
+                <p className="text-xs text-slate-400">Words you get wrong often — practice again!</p>
                 <div className="flex flex-wrap gap-1.5">
                   {recommendedWords.map(w => (
                     <span key={w.word} className="px-2.5 py-1 bg-rose-50 text-rose-700 rounded-lg text-xs font-bold border border-rose-100">
@@ -2114,7 +2114,7 @@ function WordOfTheDayView({ onSave, savedWords, user, onUpdateWord }) {
                   onClick={() => setActiveSession({ lessonKey: 'recommended', groupIdx: -1, groupWords: recommendedWords.map(w => w.word), initialWords: recommendedWords })}
                   className="w-full py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-rose-500 to-pink-600 text-white shadow-sm hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
                 >
-                  <Brain className="w-4 h-4" /> ฝึกคำเหล่านี้ →
+                  <Brain className="w-4 h-4" /> Practice these words →
                 </button>
               </div>
             )}
@@ -2134,7 +2134,7 @@ function WordOfTheDayView({ onSave, savedWords, user, onUpdateWord }) {
 
 // Shows today's completed groups grouped by lesson
 function DailyTodayList({ groups, onOpen, localProgress, sessionLoading }) {
-  const todayStr = new Date().toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' });
+  const todayStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 
   // Group by lesson
   const byLesson = {};
@@ -2148,7 +2148,7 @@ function DailyTodayList({ groups, onOpen, localProgress, sessionLoading }) {
       <div className="flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-green-400 flex-none" />
         <p className="text-sm font-bold text-slate-600 flex-1">{todayStr}</p>
-        <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full">{groups.length} กลุ่ม</span>
+        <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full">{groups.length} groups</span>
       </div>
 
       {Object.entries(byLesson).map(([lessonKey, lessonGroups]) => {
@@ -2182,7 +2182,7 @@ function DailyTodayList({ groups, onOpen, localProgress, sessionLoading }) {
                       {[0,1,2,3,4].map(i => (
                         <span key={i} className={`w-1.5 h-1.5 rounded-full ${displayLevel > i ? 'bg-green-400' : 'bg-slate-200'}`} />
                       ))}
-                      <span className={`text-[10px] font-bold ml-1 ${levelMeta.text}`}>✓ วันนี้</span>
+                      <span className={`text-[10px] font-bold ml-1 ${levelMeta.text}`}>✓ Today</span>
                     </div>
                   </div>
                   <ChevronDown className="w-4 h-4 text-slate-400 -rotate-90 flex-none" />
@@ -2204,8 +2204,8 @@ function DailySuggestion({ suggestion, onOpen, loading }) {
         <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <BookOpen className="w-8 h-8 text-indigo-400" />
         </div>
-        <p className="font-bold text-slate-700 mb-1">ยังไม่ได้ฝึกวันนี้</p>
-        <p className="text-sm text-slate-400">ไปที่ Learn เพื่อเริ่มฝึก!</p>
+        <p className="font-bold text-slate-700 mb-1">Nothing practiced today</p>
+        <p className="text-sm text-slate-400">Go to Learn to start practicing!</p>
       </div>
     );
   }
@@ -2218,7 +2218,7 @@ function DailySuggestion({ suggestion, onOpen, loading }) {
     <div className="space-y-4 animate-in fade-in">
       <div className="flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-none" />
-        <p className="text-sm font-bold text-slate-500">ยังไม่ได้ฝึกวันนี้ — ลองทบทวน:</p>
+        <p className="text-sm font-bold text-slate-500">Nothing yet today — try reviewing:</p>
       </div>
 
       <button
@@ -2240,13 +2240,13 @@ function DailySuggestion({ suggestion, onOpen, loading }) {
                 {[0,1,2,3,4].map(i => (
                   <span key={i} className={`w-1.5 h-1.5 rounded-full ${suggestion.level > i ? 'bg-green-400' : 'bg-slate-200'}`} />
                 ))}
-                <span className="text-[10px] text-slate-400 ml-1">ครั้งล่าสุด</span>
+                <span className="text-[10px] text-slate-400 ml-1">Last score</span>
               </div>
             )}
           </div>
         </div>
         <div className={`py-2.5 rounded-xl text-center text-sm font-bold bg-gradient-to-r ${levelMeta.color} text-white shadow-sm flex items-center justify-center gap-2`}>
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Sparkles className="w-4 h-4" /> ทบทวน Challenge นี้</>}
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Sparkles className="w-4 h-4" /> Review this challenge</>}
         </div>
       </button>
     </div>
