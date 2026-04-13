@@ -3034,8 +3034,6 @@ function WordleGame({ word, date, onGameEnd }) {
   const [curr, setCurr]         = useState('');
   const [status, setStatus]     = useState(saved.status || 'playing');
   const [reported, setReported] = useState(saved.status === 'won' || saved.status === 'lost');
-  const [checking, setChecking] = useState(false);
-  const [invalidWord, setInvalidWord] = useState(false);
 
   // Persist state
   useEffect(() => {
@@ -3088,25 +3086,10 @@ function WordleGame({ word, date, onGameEnd }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [curr, status, target]);
 
-  const handleKey = async (key) => {
-    if (status !== 'playing' || checking) return;
+  const handleKey = (key) => {
+    if (status !== 'playing') return;
     if (key === 'Enter') {
       if (curr.length !== target.length) return;
-      // Validate word (skip if it's already the target)
-      if (curr.toLowerCase() !== target) {
-        setChecking(true);
-        try {
-          const r = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${curr.toLowerCase()}`);
-          if (!r.ok) {
-            setInvalidWord(true);
-            setTimeout(() => setInvalidWord(false), 1800);
-            setChecking(false);
-            return;
-          }
-        } catch { /* fail open on network error */ }
-        setChecking(false);
-      }
-      setInvalidWord(false);
       const ng = [...guesses, curr.toLowerCase()];
       setGuesses(ng);
       if (curr.toLowerCase() === target)  setStatus('won');
@@ -3145,16 +3128,6 @@ function WordleGame({ word, date, onGameEnd }) {
         })}
       </div>
 
-      {invalidWord && (
-        <div className="text-center p-2.5 rounded-xl mb-3 font-bold text-amber-700 bg-amber-50 border border-amber-200 text-sm animate-in zoom-in-95">
-          Not a valid English word!
-        </div>
-      )}
-      {checking && !invalidWord && (
-        <div className="text-center text-xs text-slate-400 mb-3 flex items-center justify-center gap-1.5">
-          <Loader2 className="w-3 h-3 animate-spin" /> Checking…
-        </div>
-      )}
       {status !== 'playing' && (
         <div className={`text-center p-4 rounded-xl mb-5 font-bold animate-in zoom-in-95 ${status === 'won' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
           {status === 'won' ? `🎉 Won in ${guesses.length}!` : `❌ Word was ${target.toUpperCase()}`}
