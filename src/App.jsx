@@ -368,9 +368,12 @@ function BoldText({ text }) {
 // FindView
 // ═════════════════════════════════════════════════════════════════════════════
 // ─── TappableText — renders text with clickable English words ─────────────────
+const stripBTags = (str) => (str || '').replace(/<\/?b>/gi, '');
+
 function TappableText({ text, onWordTap, className = '' }) {
   if (!text) return null;
-  const parts = text.split(/(\b[a-zA-Z]+(?:[-'][a-zA-Z]+)*\b)/g);
+  const clean = stripBTags(text);
+  const parts = clean.split(/(\b[a-zA-Z]+(?:[-'][a-zA-Z]+)*\b)/g);
   return (
     <span className={className}>
       {parts.map((part, i) =>
@@ -409,7 +412,7 @@ function ChatEnglishWord({ msg, onSave, savedWords, onWordTap }) {
         <div className="space-y-2 pt-2 border-t border-slate-100">
           {d.examples.map((ex, i) => (
             <div key={i} className="space-y-0.5">
-              <p className="text-sm text-slate-700"><TappableText text={ex.en?.replace(/<\/?b>/gi, '')} onWordTap={onWordTap} /></p>
+              <p className="text-sm text-slate-700"><TappableText text={ex.en} onWordTap={onWordTap} /></p>
               <p className="text-xs text-slate-400">{ex.th}</p>
             </div>
           ))}
@@ -432,13 +435,7 @@ function ChatEnglishWord({ msg, onSave, savedWords, onWordTap }) {
 
 function ChatGrammarCheck({ msg, onWordTap }) {
   const d = msg.data;
-  const [copied, setCopied] = useState(false);
   if (!d) return null;
-  const handleCopy = () => {
-    navigator.clipboard.writeText(d.corrected || '');
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  };
   return (
     <div className="bg-white rounded-2xl rounded-tl-sm border border-slate-200 shadow-sm p-4 space-y-3 animate-in fade-in">
       {d.isCorrect ? (
@@ -453,9 +450,7 @@ function ChatGrammarCheck({ msg, onWordTap }) {
       <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
         <div className="flex items-center justify-between mb-1">
           <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">Corrected</p>
-          <button onClick={handleCopy} className="flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 font-medium">
-            {copied ? <><CheckCircle className="w-3 h-3" /> Copied</> : <><Copy className="w-3 h-3" /> Copy</>}
-          </button>
+          <CopyButton text={d.corrected} />
         </div>
         <p className="text-slate-800 font-medium text-sm leading-relaxed">
           <TappableText text={d.corrected} onWordTap={onWordTap} />
@@ -482,6 +477,20 @@ function ChatGrammarCheck({ msg, onWordTap }) {
   );
 }
 
+function CopyButton({ text, colorClass = 'text-indigo-500 hover:text-indigo-700' }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(stripBTags(text || ''));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+  return (
+    <button onClick={handleCopy} className={`flex items-center gap-1 text-xs font-medium ${colorClass}`}>
+      {copied ? <><CheckCircle className="w-3 h-3" /> Copied</> : <><Copy className="w-3 h-3" /> Copy</>}
+    </button>
+  );
+}
+
 function ChatThaiToEnglish({ msg, onWordTap }) {
   const d = msg.data;
   if (!d) return null;
@@ -490,14 +499,20 @@ function ChatThaiToEnglish({ msg, onWordTap }) {
       <p className="text-xs text-slate-400 font-medium">Translation · {msg.original}</p>
       <div className="space-y-2">
         <div className="bg-indigo-50 rounded-xl p-3 border border-indigo-100">
-          <p className="text-xs font-bold text-indigo-500 mb-1">🎩 Formal</p>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs font-bold text-indigo-500">🎩 Formal</p>
+            <CopyButton text={d.formal?.english} colorClass="text-indigo-400 hover:text-indigo-700" />
+          </div>
           <p className="text-sm text-slate-800 font-medium leading-relaxed">
             <TappableText text={d.formal?.english} onWordTap={onWordTap} />
           </p>
           {d.formal?.note && <p className="text-xs text-slate-400 mt-1">{d.formal.note}</p>}
         </div>
         <div className="bg-green-50 rounded-xl p-3 border border-green-100">
-          <p className="text-xs font-bold text-green-600 mb-1">😊 Casual</p>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs font-bold text-green-600">😊 Casual</p>
+            <CopyButton text={d.casual?.english} colorClass="text-green-500 hover:text-green-700" />
+          </div>
           <p className="text-sm text-slate-800 font-medium leading-relaxed">
             <TappableText text={d.casual?.english} onWordTap={onWordTap} />
           </p>
