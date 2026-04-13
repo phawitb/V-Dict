@@ -43,6 +43,7 @@ let wordleScoresCol;
 let storiesCol;
 let userDailyCol;
 let lessonProgressCol;
+let wordDifficultyCol;
 
 const INITIAL_ADMIN = 'phawit.boo@gmail.com';
 
@@ -66,6 +67,8 @@ async function connectDB() {
   await userDailyCol.createIndex({ userId: 1, date: 1 }, { unique: true });
   await userDailyCol.createIndex({ userId: 1 });
   await lessonProgressCol.createIndex({ userId: 1, lessonKey: 1, groupIdx: 1 }, { unique: true });
+  wordDifficultyCol  = db.collection('word_difficulty');
+  await wordDifficultyCol.createIndex({ userId: 1, word: 1 }, { unique: true });
   await wordCacheCol.createIndex({ word: 1 }, { unique: true });
   await vocabBankCol.createIndex({ word: 1 }, { unique: true }).catch(() => {});
   await dailyCol.createIndex({ date: 1 }, { unique: true });
@@ -649,6 +652,66 @@ app.post('/api/lesson-progress', async (req, res) => {
       { upsert: true },
     );
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Word Difficulty / Recommendation ──────────────────────────────────────────
+// POST /api/word-difficulty/batch  → upsert per-word correct/wrong counts
+app.post('/api/word-difficulty/batch', async (req, res) => {
+  try {
+    const { userId, stats } = req.body; // stats: [{word, wrong, correct}]
+    if (!userId || !stats?.length) return res.json({ ok: true });
+    const ops = stats.map(({ word, wrong = 0, correct = 0 }) => ({
+      updateOne: {
+        filter: { userId, word: word.toLowerCase() },
+        update: {
+          $inc: { wrongCount: wrong, correctCount: correct },
+          $set: { updatedAt: Date.now() },
+          $setOnInsert: { createdAt: Date.now() },
+        },
+        upsert: true,
+      },
+    }));
+    await wordDifficultyCol.bulkWrite(ops);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/word-difficulty/recommend?userId=&limit=  → recommended words to review
+app.get('/api/word-difficulty/recommend', async (req, res) => {
+  try {
+    const { userId, limit = '5' } = req.query;
+    if (!userId) return res.json({ words: [] });
+    const n = parseInt(limit);
+
+    // Words with at least 2 attempts, sorted by wrong ratio desc
+    const docs = await wordDifficultyCol
+      .find({ userId, $expr: { $gte: ['$wrongCount', 1] } })
+      .sort({ wrongCount: -1, updatedAt: -1 })
+      .limit(50)
+      .toArray();
+
+    if (!docs.length) return res.json({ words: [] });
+
+    // Sort by wrong ratio and take top N
+    const ranked = docs
+      .map(d => ({ ...d, ratio: d.wrongCount / Math.max(d.wrongCount + (d.correctCount || 0), 1) }))
+      .sort((a, b) => b.ratio - a.ratio || b.wrongCount - a.wrongCount)
+      .slice(0, n);
+
+    const wordNames = ranked.map(d => d.word);
+
+    // Fetch full word data: try user's saved words first, then word_cache
+    const savedDocs = await wordsCol.find({ userId, word: { $in: wordNames } }).toArray();
+    const foundSet  = new Set(savedDocs.map(w => w.word.toLowerCase()));
+    const missing   = wordNames.filter(w => !foundSet.has(w));
+    const cacheDocs = missing.length ? await wordCacheCol.find({ word: { $in: missing } }).toArray() : [];
+
+    // Preserve ranking order
+    const allDocs = [...savedDocs, ...cacheDocs];
+    const ordered = wordNames.map(w => allDocs.find(d => d.word.toLowerCase() === w)).filter(Boolean);
+
+    res.json({ words: ordered });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

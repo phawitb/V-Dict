@@ -1280,6 +1280,15 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
   const [summary, setSummary] = useState(null);
   // useRef avoids stale-closure issue — onComplete always reads current accumulated scores
   const stageScoresRef        = useRef([]);
+  // Per-word correct/wrong tracking for difficulty stats
+  const wordResultsRef        = useRef({});  // { word: { wrong, correct } }
+
+  const handleWordResult = (word, correct) => {
+    const key = word.toLowerCase();
+    if (!wordResultsRef.current[key]) wordResultsRef.current[key] = { word: key, wrong: 0, correct: 0 };
+    if (correct) wordResultsRef.current[key].correct++;
+    else         wordResultsRef.current[key].wrong++;
+  };
 
   useEffect(() => {
     if (initialWords?.length) {
@@ -1334,6 +1343,15 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
       level,
     };
     localStorage.setItem(`sg_${lessonKey}_${groupIdx}_${userId}`, JSON.stringify(record));
+    // Batch-send per-word difficulty stats
+    const stats = Object.values(wordResultsRef.current);
+    if (userId && stats.length) {
+      fetch(`${API_BASE}/api/word-difficulty/batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, stats }),
+      }).catch(console.error);
+    }
     // Show summary popup; parent callbacks called when user dismisses popup
     setSummary({ level, totalCorrect, totalQ, stageScores: allScores });
   };
@@ -1377,8 +1395,8 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
     { label: 'Words in This Group',     icon: <BookOpen className="w-4 h-4" />,      el: <WordListPreview    words={words} onNext={next} /> },
     { label: 'Step 1: Flashcards',      icon: <Layers className="w-4 h-4" />,        el: <FlashcardGame      words={words} onNext={next} /> },
     { label: 'Step 2: Match',           icon: <RefreshCw className="w-4 h-4" />,     el: <MatchingGame       words={words} onNext={next} /> },
-    { label: 'Step 3: Multiple Choice', icon: <CheckCircle className="w-4 h-4" />,   el: <MultipleChoiceGame words={words} onNext={next} /> },
-    { label: 'Step 4: Fill in Blank',   icon: <Edit3 className="w-4 h-4" />,         el: <TypingGame         words={words} onNext={next} /> },
+    { label: 'Step 3: Multiple Choice', icon: <CheckCircle className="w-4 h-4" />,   el: <MultipleChoiceGame words={words} onNext={next} onWordResult={handleWordResult} /> },
+    { label: 'Step 4: Fill in Blank',   icon: <Edit3 className="w-4 h-4" />,         el: <TypingGame         words={words} onNext={next} onWordResult={handleWordResult} /> },
     { label: 'Step 5: AI Story',        icon: <Sparkles className="w-4 h-4" />,      el: <SubGroupAIStory    words={words} onNext={next} /> },
     { label: 'Step 6: SRS Review',      icon: <Brain className="w-4 h-4" />,         el: <SRSReview          words={words} onUpdateWord={onUpdateWord} onNext={onComplete} forceAll /> },
   ];
@@ -1972,29 +1990,34 @@ function AdminView({ user }) {
 // ═════════════════════════════════════════════════════════════════════════════
 function WordOfTheDayView({ onSave, savedWords, user, onUpdateWord }) {
   const userId = user?.sub;
-  const [loading, setLoading]           = useState(true);
-  const [todayGroups, setTodayGroups]   = useState([]);
-  const [suggestion, setSuggestion]     = useState(null);
-  const [wordleWord, setWordleWord]     = useState('');
-  const [dailyTab, setDailyTab]         = useState('review');
-  const [activeSession, setActiveSession] = useState(null);
+  const [loading, setLoading]               = useState(true);
+  const [todayGroups, setTodayGroups]       = useState([]);
+  const [suggestion, setSuggestion]         = useState(null);
+  const [recommendedWords, setRecommended]  = useState([]);
+  const [wordleWord, setWordleWord]         = useState('');
+  const [dailyTab, setDailyTab]             = useState('review');
+  const [activeSession, setActiveSession]   = useState(null);
   const [sessionLoading, setSessionLoading] = useState(false);
-  const [localProgress, setLocalProgress] = useState({});
+  const [localProgress, setLocalProgress]   = useState({});
 
   useEffect(() => {
     if (!userId) return;
     (async () => {
       setLoading(true);
       try {
-        const [todayRes, suggestRes, dailyRes] = await Promise.all([
+        const [todayRes, suggestRes, dailyRes, recommendRes] = await Promise.all([
           fetch(`${API_BASE}/api/lesson-progress/today?userId=${encodeURIComponent(userId)}`),
           fetch(`${API_BASE}/api/lesson-progress/suggest?userId=${encodeURIComponent(userId)}`),
           fetch(`${API_BASE}/api/daily?userId=${encodeURIComponent(userId)}`),
+          fetch(`${API_BASE}/api/word-difficulty/recommend?userId=${encodeURIComponent(userId)}&limit=5`),
         ]);
-        const [todayData, suggestData, dailyData] = await Promise.all([todayRes.json(), suggestRes.json(), dailyRes.json()]);
+        const [todayData, suggestData, dailyData, recommendData] = await Promise.all([
+          todayRes.json(), suggestRes.json(), dailyRes.json(), recommendRes.json(),
+        ]);
         setTodayGroups(todayData.groups || []);
         setSuggestion(suggestData.group || null);
         setWordleWord(dailyData.wordle || '');
+        setRecommended(recommendData.words || []);
       } catch (e) { console.error(e); }
       finally { setLoading(false); }
     })();
@@ -2021,12 +2044,16 @@ function WordOfTheDayView({ onSave, savedWords, user, onUpdateWord }) {
     finally { setSessionLoading(false); }
   };
 
+  const RECOMMENDED_META = { label: 'คำที่ต้องทบทวน', color: 'from-rose-500 to-pink-600', bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-700', icon: '🧠' };
+
   if (activeSession) {
-    const levelMeta = LESSONS.find(l => l.key === activeSession.lessonKey) || MY_VOCABS_META;
+    const isRecommended = activeSession.lessonKey === 'recommended';
+    const levelMeta = isRecommended ? RECOMMENDED_META : (LESSONS.find(l => l.key === activeSession.lessonKey) || MY_VOCABS_META);
     return (
       <SubGroupPractice
         key={`daily-${activeSession.lessonKey}-${activeSession.groupIdx}`}
         groupWords={activeSession.groupWords}
+        initialWords={activeSession.initialWords}
         groupIdx={activeSession.groupIdx}
         lessonKey={activeSession.lessonKey}
         levelMeta={levelMeta}
@@ -2036,6 +2063,7 @@ function WordOfTheDayView({ onSave, savedWords, user, onUpdateWord }) {
         onUpdateWord={onUpdateWord}
         onBack={() => setActiveSession(null)}
         onGroupComplete={(idx, lvl, wordStrings) => {
+          if (isRecommended) return;
           const key = `${activeSession.lessonKey}_${idx}`;
           setLocalProgress(prev => ({ ...prev, [key]: lvl }));
           setTodayGroups(prev => {
@@ -2064,10 +2092,39 @@ function WordOfTheDayView({ onSave, savedWords, user, onUpdateWord }) {
       {dailyTab === 'review' && (
         loading ? (
           <div className="py-16 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
-        ) : todayGroups.length > 0 ? (
-          <DailyTodayList groups={todayGroups} onOpen={openGroup} localProgress={localProgress} sessionLoading={sessionLoading} />
         ) : (
-          <DailySuggestion suggestion={suggestion} onOpen={openGroup} loading={sessionLoading} />
+          <div className="space-y-5">
+            {/* Recommended words card */}
+            {recommendedWords.length >= 3 && (
+              <div className="bg-white rounded-2xl border border-rose-100 shadow-sm p-4 space-y-3 animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <Brain className="w-4 h-4 text-rose-500" />
+                  <p className="text-sm font-bold text-slate-700">ระบบแนะนำ</p>
+                  <span className="ml-auto text-xs text-rose-600 font-bold bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-full">{recommendedWords.length} คำ</span>
+                </div>
+                <p className="text-xs text-slate-400">คำที่คุณตอบผิดบ่อย — ลองฝึกซ้ำ!</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {recommendedWords.map(w => (
+                    <span key={w.word} className="px-2.5 py-1 bg-rose-50 text-rose-700 rounded-lg text-xs font-bold border border-rose-100">
+                      {w.word}
+                    </span>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setActiveSession({ lessonKey: 'recommended', groupIdx: -1, groupWords: recommendedWords.map(w => w.word), initialWords: recommendedWords })}
+                  className="w-full py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-rose-500 to-pink-600 text-white shadow-sm hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                >
+                  <Brain className="w-4 h-4" /> ฝึกคำเหล่านี้ →
+                </button>
+              </div>
+            )}
+            {/* Today's groups or suggestion */}
+            {todayGroups.length > 0 ? (
+              <DailyTodayList groups={todayGroups} onOpen={openGroup} localProgress={localProgress} sessionLoading={sessionLoading} />
+            ) : (
+              <DailySuggestion suggestion={suggestion} onOpen={openGroup} loading={sessionLoading} />
+            )}
+          </div>
         )
       )}
       {dailyTab === 'wordle' && <DailyWordle word={wordleWord} user={user} />}
@@ -2528,7 +2585,7 @@ function MatchingGame({ words, onNext }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // MultipleChoiceGame
 // ═════════════════════════════════════════════════════════════════════════════
-function MultipleChoiceGame({ words, onNext }) {
+function MultipleChoiceGame({ words, onNext, onWordResult }) {
   if (words.length < 4) return <NoWordsMessage min={4} />;
 
   const [questions, setQs]        = useState([]);
@@ -2567,15 +2624,15 @@ function MultipleChoiceGame({ words, onNext }) {
   const answer = (opt) => {
     if (selAns) return;
     setSelAns(opt);
-    if (opt === questions[cidx].tw.word.toLowerCase()) {
+    const correct = opt === questions[cidx].tw.word.toLowerCase();
+    onWordResult?.(questions[cidx].tw.word, correct);
+    if (correct) {
       setScore(s => s + 1);
-      // auto-advance after correct
       setTimeout(() => {
         if (cidx + 1 < questions.length) { setCidx(c => c + 1); setSelAns(null); setShowNext(false); }
         else setShowRes(true);
       }, 1000);
     } else {
-      // wrong: user must click Next
       setShowNext(true);
     }
   };
@@ -2627,7 +2684,7 @@ function MultipleChoiceGame({ words, onNext }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // TypingGame
 // ═════════════════════════════════════════════════════════════════════════════
-function TypingGame({ words, onNext }) {
+function TypingGame({ words, onNext, onWordResult }) {
   if (!words.length) return <NoWordsMessage />;
 
   const [questions, setQs]    = useState([]);
@@ -2661,16 +2718,15 @@ function TypingGame({ words, onNext }) {
     e.preventDefault();
     if (fb || !input.trim()) return;
     const correct = input.toLowerCase().trim() === questions[cidx].tw.word.toLowerCase();
+    onWordResult?.(questions[cidx].tw.word, correct);
     setFb(correct ? 'correct' : 'incorrect');
     if (correct) {
       setScore(s => s + 1);
-      // auto-advance on correct
       setTimeout(() => {
         if (cidx + 1 < questions.length) { setCidx(c => c + 1); setInput(''); setFb(null); setHint(false); setShowNext(false); }
         else setShowRes(true);
       }, 1000);
     } else {
-      // wrong: user must press Next
       setShowNext(true);
     }
   };
