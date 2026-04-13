@@ -668,9 +668,9 @@ function FindView({ onSave, words, focusTrigger, userId }) {
   const examples = ['resilient', 'I can going to store', 'สวัสดีตอนเช้า', 'รัก'];
 
   return (
-    <div className="flex flex-col h-full max-w-xl mx-auto w-full animate-in fade-in">
+    <div className="flex flex-col max-w-xl mx-auto w-full animate-in fade-in">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto space-y-4 pb-4 min-h-0">
+      <div className="space-y-4 pb-24">
         {messages.length === 0 && (
           <div className="text-center py-12 px-4">
             <div className="w-14 h-14 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -717,9 +717,9 @@ function FindView({ onSave, words, focusTrigger, userId }) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
-      <div className="flex-none pt-2">
-        <div className="flex gap-2 bg-white border-2 border-slate-200 focus-within:border-indigo-400 rounded-2xl p-2 shadow-sm transition-colors">
+      {/* Input — fixed above nav bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-10 bg-slate-50 border-t border-slate-200 px-4 pt-2 pb-2 safe-bottom" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)' }}>
+        <div className="max-w-xl mx-auto flex gap-2 bg-white border-2 border-slate-200 focus-within:border-indigo-400 rounded-2xl p-2 shadow-sm transition-colors">
           <input
             ref={inputRef}
             value={input}
