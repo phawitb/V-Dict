@@ -193,7 +193,7 @@ export default function App() {
   const [headerTitle, setHeaderTitle]     = useState(null);
   const [findFocusTrigger, setFindFocusTrigger] = useState(0);
 
-  const TAB_TITLES = { find: 'Find Word', vocabs: 'My Vocabs', learning: 'Learn', wotd: 'Daily', profile: 'Profile', admin: 'Admin' };
+  const TAB_TITLES = { find: 'ค้นหาคำ', vocabs: 'คำศัพท์ของฉัน', learning: 'เรียน', wotd: 'รายวัน', profile: 'โปรไฟล์', admin: 'แอดมิน' };
   const switchTab = (tab) => { setActiveTab(tab); setHeaderTitle(null); };
 
   // Load words when user is available
@@ -292,8 +292,8 @@ export default function App() {
       {/* Bottom Nav — always fixed */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-20 safe-bottom">
         <div className="flex justify-around items-center max-w-4xl mx-auto p-2">
-          <NavButton icon={<Book />}   label="Vocabs"  active={activeTab === 'vocabs'}   onClick={() => switchTab('vocabs')} />
-          <NavButton icon={<Layers />} label="Learn"   active={activeTab === 'learning'} onClick={() => switchTab('learning')} badge={dueCount > 0 ? dueCount : null} />
+          <NavButton icon={<Book />}   label="คำศัพท์"  active={activeTab === 'vocabs'}   onClick={() => switchTab('vocabs')} />
+          <NavButton icon={<Layers />} label="เรียน"   active={activeTab === 'learning'} onClick={() => switchTab('learning')} badge={dueCount > 0 ? dueCount : null} />
 
           <button
             onClick={() => { switchTab('find'); setFindFocusTrigger(t => t + 1); }}
@@ -304,8 +304,8 @@ export default function App() {
             <Search className="w-6 h-6 md:w-7 md:h-7" />
           </button>
 
-          <NavButton icon={<Sun />}  label="Daily"   active={activeTab === 'wotd'}    onClick={() => switchTab('wotd')} />
-          <NavButton icon={<User />} label="Profile" active={activeTab === 'profile' || activeTab === 'admin'} onClick={() => switchTab('profile')} />
+          <NavButton icon={<Sun />}  label="รายวัน"   active={activeTab === 'wotd'}    onClick={() => switchTab('wotd')} />
+          <NavButton icon={<User />} label="โปรไฟล์" active={activeTab === 'profile' || activeTab === 'admin'} onClick={() => switchTab('profile')} />
         </div>
       </nav>
     </div>
