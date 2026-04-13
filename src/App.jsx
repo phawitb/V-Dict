@@ -1125,6 +1125,114 @@ function WordListPreview({ words, onNext }) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// CompletionSummary — popup shown after finishing a practice group
+// ═════════════════════════════════════════════════════════════════════════════
+function CompletionSummary({ summary, levelMeta, onClose }) {
+  const { level, totalCorrect, totalQ, stageScores } = summary;
+  const mcScore     = stageScores.find(s => s.stageIdx === 3);
+  const typingScore = stageScores.find(s => s.stageIdx === 4);
+  const pct         = totalQ > 0 ? Math.round((totalCorrect / totalQ) * 100) : 0;
+  const totalWrong  = totalQ - totalCorrect;
+
+  const starColors = ['text-yellow-400', 'text-yellow-400', 'text-yellow-400', 'text-yellow-400', 'text-yellow-400'];
+  const starGray   = 'text-slate-200';
+
+  return (
+    <div className="space-y-4 animate-in zoom-in-95 fade-in">
+      {/* Header */}
+      <div className={`bg-gradient-to-br ${levelMeta.color} rounded-2xl p-6 text-white text-center shadow-lg`}>
+        <p className="text-sm font-semibold opacity-80 mb-2">Group Complete!</p>
+        {/* Stars */}
+        <div className="flex justify-center gap-1 mb-3">
+          {[1,2,3,4,5].map(i => (
+            <span key={i} className={`text-3xl transition-all duration-300 ${i <= level ? starColors[i-1] : starGray}`}
+              style={{ animationDelay: `${i * 100}ms` }}>★</span>
+          ))}
+        </div>
+        <p className="text-4xl font-black">{pct}%</p>
+        <p className="text-sm opacity-75 mt-1">{totalCorrect} ถูก / {totalWrong} ผิด</p>
+      </div>
+
+      {/* Score ring */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <div className="flex items-center gap-5">
+          {/* SVG ring */}
+          <div className="relative w-20 h-20 flex-none">
+            <svg className="w-full h-full -rotate-90" viewBox="0 0 80 80">
+              <circle cx="40" cy="40" r="32" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-slate-100" />
+              <circle cx="40" cy="40" r="32" stroke="currentColor" strokeWidth="8" strokeLinecap="round" fill="transparent"
+                className={pct >= 60 ? 'text-green-500' : pct >= 40 ? 'text-amber-500' : 'text-red-400'}
+                strokeDasharray="201.06"
+                strokeDashoffset={201.06 - (201.06 * pct) / 100}
+                style={{ transition: 'stroke-dashoffset 1s ease-out' }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-lg font-black text-slate-800">{level}</span>
+              <span className="text-[10px] text-slate-400">/ 5</span>
+            </div>
+          </div>
+          {/* Stat boxes */}
+          <div className="flex-1 grid grid-cols-2 gap-2">
+            <div className="bg-green-50 border border-green-100 rounded-xl p-3 text-center">
+              <p className="text-2xl font-black text-green-600">{totalCorrect}</p>
+              <p className="text-[11px] text-green-500 font-semibold">ถูก</p>
+            </div>
+            <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-center">
+              <p className="text-2xl font-black text-red-500">{totalWrong}</p>
+              <p className="text-[11px] text-red-400 font-semibold">ผิด</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Task breakdown */}
+      {(mcScore || typingScore) && (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-3">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">แต่ละ Task</p>
+          {mcScore && (
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center flex-none">
+                <CheckCircle className="w-4 h-4 text-indigo-500" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-slate-700">Multiple Choice</p>
+                <div className="flex gap-2 mt-0.5">
+                  <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">✓ {mcScore.score}</span>
+                  <span className="text-xs font-semibold text-red-500 bg-red-50 px-2 py-0.5 rounded-full">✗ {mcScore.total - mcScore.score}</span>
+                </div>
+              </div>
+              <p className="text-sm font-black text-slate-600">{mcScore.total > 0 ? Math.round((mcScore.score/mcScore.total)*100) : 0}%</p>
+            </div>
+          )}
+          {typingScore && (
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center flex-none">
+                <Type className="w-4 h-4 text-purple-500" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-slate-700">Fill in Blank</p>
+                <div className="flex gap-2 mt-0.5">
+                  <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">✓ {typingScore.score}</span>
+                  <span className="text-xs font-semibold text-red-500 bg-red-50 px-2 py-0.5 rounded-full">✗ {typingScore.total - typingScore.score}</span>
+                </div>
+              </div>
+              <p className="text-sm font-black text-slate-600">{typingScore.total > 0 ? Math.round((typingScore.score/typingScore.total)*100) : 0}%</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* CTA */}
+      <button onClick={onClose}
+        className={`w-full py-4 rounded-2xl font-black text-white shadow-lg text-sm bg-gradient-to-r ${levelMeta.color} hover:opacity-90 transition-opacity`}>
+        กลับไปหน้า Groups →
+      </button>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // SubGroupPractice — practice a group of 5 words through 4 stages
 // ═════════════════════════════════════════════════════════════════════════════
 function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, savedWords, onSaveWord, onUpdateWord, onBack, onGroupComplete, initialWords }) {
@@ -1132,6 +1240,7 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [stage, setStage]     = useState(0);
+  const [summary, setSummary] = useState(null);
   // useRef avoids stale-closure issue — onComplete always reads current accumulated scores
   const stageScoresRef        = useRef([]);
 
@@ -1176,7 +1285,7 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
   }, []);
 
   const onComplete = (score = 0, total = 0) => {
-    const allScores    = [...stageScoresRef.current, { score, total }];
+    const allScores    = [...stageScoresRef.current, { score, total, stageIdx: 6 }];
     const totalCorrect = allScores.reduce((s, x) => s + x.score, 0);
     const totalQ       = allScores.reduce((s, x) => s + x.total, 0);
     // level 1-5 proportional to score; always at least 1 after completing
@@ -1188,12 +1297,17 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
       level,
     };
     localStorage.setItem(`sg_${lessonKey}_${groupIdx}_${userId}`, JSON.stringify(record));
-    onGroupComplete?.(groupIdx, level);   // notify parent to update React state
-    onBack();
+    // Show summary popup; parent callbacks called when user dismisses popup
+    setSummary({ level, totalCorrect, totalQ, stageScores: allScores });
+  };
+
+  const handleSummaryClose = () => {
+    onGroupComplete?.(groupIdx, summary.level);  // update parent React state
+    onBack();                                     // navigate back to group list
   };
 
   const next = (score = 0, total = 0) => {
-    if (total > 0) stageScoresRef.current = [...stageScoresRef.current, { score, total }];
+    if (total > 0) stageScoresRef.current = [...stageScoresRef.current, { score, total, stageIdx: stage }];
     setStage(s => s + 1);
   };
 
@@ -1212,6 +1326,15 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
   );
 
   if (!words?.length) return null;
+
+  // Show completion summary popup (dots fix: onGroupComplete called only here)
+  if (summary) {
+    return (
+      <div className="max-w-xl mx-auto w-full animate-in fade-in">
+        <CompletionSummary summary={summary} levelMeta={levelMeta} onClose={handleSummaryClose} />
+      </div>
+    );
+  }
 
   const stages = [
     { label: 'Words in This Group',     icon: <BookOpen className="w-4 h-4" />,      el: <WordListPreview    words={words} onNext={next} /> },
@@ -1236,23 +1359,12 @@ function SubGroupPractice({ groupWords, groupIdx, lessonKey, levelMeta, userId, 
         </div>
       </div>
 
-      {stage < stages.length ? (
-        <div className="animate-in slide-in-from-right-4 fade-in">
-          <div className={`${levelMeta.bg} ${levelMeta.text} px-4 py-2 rounded-xl text-center text-sm font-bold mb-4 border ${levelMeta.border} shadow-sm flex items-center justify-center gap-2`}>
-            {stages[stage].icon} {stages[stage].label}
-          </div>
-          {stages[stage].el}
+      <div className="animate-in slide-in-from-right-4 fade-in">
+        <div className={`${levelMeta.bg} ${levelMeta.text} px-4 py-2 rounded-xl text-center text-sm font-bold mb-4 border ${levelMeta.border} shadow-sm flex items-center justify-center gap-2`}>
+          {stage < stages.length ? <>{stages[stage].icon} {stages[stage].label}</> : null}
         </div>
-      ) : (
-        <div className="text-center py-16 px-4 bg-white rounded-2xl border border-slate-200 shadow-sm animate-in zoom-in-95">
-          <div className="w-20 h-20 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-sm">
-            <Trophy className="w-10 h-10" />
-          </div>
-          <h2 className="text-xl font-bold text-slate-800 mb-2">Group Complete!</h2>
-          <p className="text-sm text-slate-500 mb-6">You've practiced all {words.length} words in this group.</p>
-          <button onClick={onBack} className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 text-sm">Back to Groups</button>
-        </div>
-      )}
+        {stage < stages.length && stages[stage].el}
+      </div>
     </div>
   );
 }
