@@ -795,6 +795,23 @@ function MyVocabsSession({ words, userId, onUpdateWord, onSaveWord, onBack, dueC
     return groups;
   }, [words]);
 
+  useEffect(() => {
+    if (!userId) return;
+    fetch(`${API_BASE}/api/lesson-progress?userId=${encodeURIComponent(userId)}&lessonKey=my_vocabs`)
+      .then(r => r.json())
+      .then(d => { if (d.progress) setGroupProgress(d.progress); })
+      .catch(console.error);
+  }, [userId]);
+
+  const saveGroupProgress = (groupIdx, scoreLevel) => {
+    const date = new Date().toISOString().split('T')[0];
+    fetch(`${API_BASE}/api/lesson-progress`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, lessonKey: 'my_vocabs', groupIdx, level: scoreLevel, date }),
+    }).catch(console.error);
+  };
+
   if (activeGroup !== null) {
     const group = subGroups[activeGroup];
     return (
@@ -810,7 +827,10 @@ function MyVocabsSession({ words, userId, onUpdateWord, onSaveWord, onBack, dueC
         onSaveWord={onSaveWord}
         onUpdateWord={onUpdateWord}
         onBack={() => setActiveGroup(null)}
-        onGroupComplete={(idx, lvl) => setGroupProgress(prev => ({ ...prev, [idx]: lvl }))}
+        onGroupComplete={(idx, lvl) => {
+          setGroupProgress(prev => ({ ...prev, [idx]: lvl }));
+          saveGroupProgress(idx, lvl);
+        }}
       />
     );
   }
@@ -887,17 +907,31 @@ function LevelStudySession({ level, levelMeta, userId, onSaveWord, onUpdateWord,
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res  = await fetch(`${API_BASE}/api/level-words/${level}?userId=${userId}`);
-      const data = await res.json();
+      const [wordsRes, progressRes] = await Promise.all([
+        fetch(`${API_BASE}/api/level-words/${level}?userId=${userId}`),
+        fetch(`${API_BASE}/api/lesson-progress?userId=${encodeURIComponent(userId)}&lessonKey=${encodeURIComponent(level)}`),
+      ]);
+      const data     = await wordsRes.json();
+      const progData = await progressRes.json();
       setLessonWords(data.lessonWords || []);
       setSavedWords(data.saved || []);
       setSavedSet(new Set((data.saved || []).map(w => w.word.toLowerCase())));
       setTotal(data.total || 0);
+      setGroupProgress(progData.progress || {});
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 
   useEffect(() => { fetchData(); }, [level, userId]);
+
+  const saveGroupProgress = (groupIdx, scoreLevel) => {
+    const date = new Date().toISOString().split('T')[0];
+    fetch(`${API_BASE}/api/lesson-progress`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, lessonKey: level, groupIdx, level: scoreLevel, date }),
+    }).catch(console.error);
+  };
 
   const subGroups = useMemo(() => {
     const groups = [];
@@ -932,7 +966,10 @@ function LevelStudySession({ level, levelMeta, userId, onSaveWord, onUpdateWord,
         }}
         onUpdateWord={onUpdateWord}
         onBack={() => setActiveGroup(null)}
-        onGroupComplete={(idx, lvl) => setGroupProgress(prev => ({ ...prev, [idx]: lvl }))}
+        onGroupComplete={(idx, lvl) => {
+          setGroupProgress(prev => ({ ...prev, [idx]: lvl }));
+          saveGroupProgress(idx, lvl);
+        }}
       />
     );
   }

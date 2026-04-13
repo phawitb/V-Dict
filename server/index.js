@@ -42,6 +42,7 @@ let adminsCol;
 let wordleScoresCol;
 let storiesCol;
 let userDailyCol;
+let lessonProgressCol;
 
 const INITIAL_ADMIN = 'phawit.boo@gmail.com';
 
@@ -56,13 +57,15 @@ async function connectDB() {
   configCol        = db.collection('config');
   adminsCol        = db.collection('admins');
 
-  wordleScoresCol  = db.collection('wordle_scores');
-  storiesCol       = db.collection('stories');
-  userDailyCol     = db.collection('user_daily');
+  wordleScoresCol    = db.collection('wordle_scores');
+  storiesCol         = db.collection('stories');
+  userDailyCol       = db.collection('user_daily');
+  lessonProgressCol  = db.collection('lesson_progress');
 
   await wordsCol.createIndex({ userId: 1, word: 1 }, { unique: true });
   await userDailyCol.createIndex({ userId: 1, date: 1 }, { unique: true });
   await userDailyCol.createIndex({ userId: 1 });
+  await lessonProgressCol.createIndex({ userId: 1, lessonKey: 1, groupIdx: 1 }, { unique: true });
   await wordCacheCol.createIndex({ word: 1 }, { unique: true });
   await vocabBankCol.createIndex({ word: 1 }, { unique: true }).catch(() => {});
   await dailyCol.createIndex({ date: 1 }, { unique: true });
@@ -593,6 +596,33 @@ app.delete('/api/admin/admins/:email', requireAdmin, async (req, res) => {
   if (target === req.adminEmail) return res.status(400).json({ error: 'Cannot remove yourself' });
   try {
     await adminsCol.deleteOne({ email: target });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Lesson Progress ────────────────────────────────────────────────────────────
+// GET /api/lesson-progress?userId=&lessonKey=  → { progress: { groupIdx: level } }
+app.get('/api/lesson-progress', async (req, res) => {
+  try {
+    const { userId, lessonKey } = req.query;
+    if (!userId || !lessonKey) return res.json({ progress: {} });
+    const docs = await lessonProgressCol.find({ userId, lessonKey }).toArray();
+    const progress = {};
+    for (const d of docs) progress[d.groupIdx] = d.level;
+    res.json({ progress });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/lesson-progress  → upsert one group's progress
+app.post('/api/lesson-progress', async (req, res) => {
+  try {
+    const { userId, lessonKey, groupIdx, level, score, total, date } = req.body;
+    if (!userId || !lessonKey || groupIdx == null) return res.status(400).json({ error: 'Missing fields' });
+    await lessonProgressCol.updateOne(
+      { userId, lessonKey, groupIdx },
+      { $set: { level, score, total, date, updatedAt: Date.now() } },
+      { upsert: true },
+    );
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
