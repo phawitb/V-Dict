@@ -2005,6 +2005,12 @@ function WordOfTheDayView({ onSave, savedWords, user, onUpdateWord }) {
       setActiveSession({ lessonKey, groupIdx, groupWords: preloadedWords });
       return;
     }
+    // my_vocabs: use savedWords directly (no level-words API)
+    if (lessonKey === 'my_vocabs') {
+      const groupWords = savedWords.slice(groupIdx * 5, groupIdx * 5 + 5).map(w => w.word);
+      setActiveSession({ lessonKey, groupIdx, groupWords });
+      return;
+    }
     setSessionLoading(true);
     try {
       const res  = await fetch(`${API_BASE}/api/level-words/${lessonKey}?userId=${encodeURIComponent(userId)}`);
