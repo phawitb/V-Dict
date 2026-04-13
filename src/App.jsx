@@ -2718,12 +2718,16 @@ function MatchingGame({ words, onNext }) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// ─── Blank a word in a sentence (exact match first, then prefix fallback) ────
+// ─── Blank a word in a sentence, returns { sentence, matchedForm } ───────────
 function blankWord(plain, word) {
-  const exact = plain.replace(new RegExp(`\\b${word}\\b`, 'gi'), '________');
-  if (exact !== plain) return exact;
-  // fallback: match word stem + any suffix (e.g. accuse → accused, accusing)
-  return plain.replace(new RegExp(`\\b${word}\\w*`, 'gi'), '________');
+  const exactRe = new RegExp(`\\b${word}\\b`, 'gi');
+  const m1 = plain.match(new RegExp(`\\b${word}\\b`, 'i'));
+  if (m1) return { sentence: plain.replace(exactRe, '________'), matchedForm: m1[0] };
+  // fallback: stem + any suffix (accuse → accused, accusing…)
+  const prefixRe = new RegExp(`\\b${word}\\w*`, 'gi');
+  const m2 = plain.match(new RegExp(`\\b${word}\\w*`, 'i'));
+  if (m2) return { sentence: plain.replace(prefixRe, '________'), matchedForm: m2[0] };
+  return { sentence: plain, matchedForm: word };
 }
 
 // ─── Render sentence with styled blank ───────────────────────────────────────
@@ -2736,7 +2740,7 @@ function SentenceWithBlank({ sentence }) {
         <React.Fragment key={i}>
           {part}
           {i < parts.length - 1 && (
-            <span className="inline-block border-b-2 border-indigo-500 text-indigo-500 font-bold px-2 mx-0.5 leading-none">____</span>
+            <span className="inline-block border-b-2 border-indigo-500 min-w-[5rem] mx-1 align-bottom" />
           )}
         </React.Fragment>
       ))}
@@ -2762,15 +2766,15 @@ function MultipleChoiceGame({ words, onNext, onWordResult }) {
     setQs(picked.map(tw => {
       const exHtml  = tw.examples?.[0]?.en || `This is a <b>${tw.word}</b>.`;
       const plain   = exHtml.replace(/<\/?b>/gi, '');
-      const blanked = blankWord(plain, tw.word);
-      // options are lowercase
-      const opts    = [
-        tw.word.toLowerCase(),
+      const { sentence: blanked, matchedForm } = blankWord(plain, tw.word);
+      const correctOpt = matchedForm.toLowerCase();
+      const opts = [
+        correctOpt,
         ...words.filter(w => w.word.toLowerCase() !== tw.word.toLowerCase())
           .sort(() => 0.5 - Math.random()).slice(0, 3).map(w => w.word.toLowerCase()),
       ].sort(() => 0.5 - Math.random());
       const thHint  = (tw.examples?.[0]?.th || '').replace(/<b>(.*?)<\/b>/gi, '{$1}');
-      return { tw, sentence: blanked, opts, thHint };
+      return { tw, sentence: blanked, opts, thHint, correctOpt };
     }));
     setCidx(0); setScore(0); setShowRes(false); setSelAns(null); setHintShown(-1); setShowNext(false);
   };
@@ -2785,7 +2789,7 @@ function MultipleChoiceGame({ words, onNext, onWordResult }) {
   const answer = (opt) => {
     if (selAns) return;
     setSelAns(opt);
-    const correct = opt === questions[cidx].tw.word.toLowerCase();
+    const correct = opt === questions[cidx].correctOpt;
     onWordResult?.(questions[cidx].tw.word, correct);
     if (correct) {
       setScore(s => s + 1);
@@ -2826,7 +2830,7 @@ function MultipleChoiceGame({ words, onNext, onWordResult }) {
         {q.opts.map((opt, i) => {
           let cls = 'bg-white border-2 border-slate-200 text-slate-700 hover:border-indigo-400 hover:bg-indigo-50 shadow-sm';
           if (ok) {
-            if (opt === q.tw.word.toLowerCase()) cls = 'bg-green-100 border-green-500 text-green-700 font-bold';
+            if (opt === q.correctOpt) cls = 'bg-green-100 border-green-500 text-green-700 font-bold';
             else if (opt === selAns)             cls = 'bg-red-100 border-red-500 text-red-700';
             else                                 cls = 'bg-slate-50 border-slate-100 text-slate-400 opacity-50';
           }
@@ -2862,8 +2866,8 @@ function TypingGame({ words, onNext, onWordResult }) {
     setQs(picked.map(tw => {
       const exHtml  = tw.examples?.[0]?.en || `This is a <b>${tw.word}</b>.`;
       const plain   = exHtml.replace(/<\/?b>/gi, '');
-      const blanked = blankWord(plain, tw.word);
-      return { tw, sentence: blanked };
+      const { sentence: blanked, matchedForm } = blankWord(plain, tw.word);
+      return { tw, sentence: blanked, matchedForm };
     }));
     setCidx(0); setScore(0); setShowRes(false); setInput(''); setFb(null); setHint(false); setShowNext(false);
   };
@@ -2878,7 +2882,7 @@ function TypingGame({ words, onNext, onWordResult }) {
   const submit = e => {
     e.preventDefault();
     if (fb || !input.trim()) return;
-    const correct = input.toLowerCase().trim() === questions[cidx].tw.word.toLowerCase();
+    const correct = input.toLowerCase().trim() === questions[cidx].matchedForm.toLowerCase();
     onWordResult?.(questions[cidx].tw.word, correct);
     setFb(correct ? 'correct' : 'incorrect');
     if (correct) {
@@ -2912,7 +2916,7 @@ function TypingGame({ words, onNext, onWordResult }) {
             </button>
           ) : (
             <p className="text-slate-500 text-xs bg-white inline-block px-3 py-1.5 rounded-lg border border-slate-200 animate-in fade-in">
-              Hint: <span className="font-mono text-indigo-600 font-bold mr-1.5">{q.tw.word[0]}...{q.tw.word.slice(-1)}</span>
+              Hint: <span className="font-mono text-indigo-600 font-bold mr-1.5">{q.matchedForm[0]}...{q.matchedForm.slice(-1)}</span>
               <span className="font-semibold text-slate-700">({q.tw.thaiTranslation})</span>
             </p>
           )}
@@ -2931,7 +2935,7 @@ function TypingGame({ words, onNext, onWordResult }) {
         />
         {fb && (
           <div className={`mt-3 p-3 rounded-xl text-center font-bold animate-in fade-in ${fb === 'correct' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-            {fb === 'correct' ? '✅ Correct!' : `❌ Answer is "${q.tw.word}"`}
+            {fb === 'correct' ? '✅ Correct!' : `❌ Answer is "${q.matchedForm}"`}
           </div>
         )}
         {!fb && <button type="submit" disabled={!input.trim()} className="w-full mt-3 py-3.5 bg-indigo-600 text-white text-base font-bold rounded-xl hover:bg-indigo-700 disabled:bg-indigo-300 shadow-sm">Check Answer</button>}
