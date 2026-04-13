@@ -367,238 +367,375 @@ function BoldText({ text }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // FindView
 // ═════════════════════════════════════════════════════════════════════════════
+// ─── TappableText — renders text with clickable English words ─────────────────
+function TappableText({ text, onWordTap, className = '' }) {
+  if (!text) return null;
+  const parts = text.split(/(\b[a-zA-Z]+(?:[-'][a-zA-Z]+)*\b)/g);
+  return (
+    <span className={className}>
+      {parts.map((part, i) =>
+        /^[a-zA-Z]+(?:[-'][a-zA-Z]+)*$/.test(part) ? (
+          <span key={i} onClick={() => onWordTap(part)}
+            className="text-indigo-600 font-semibold cursor-pointer hover:underline decoration-indigo-400">
+            {part}
+          </span>
+        ) : part
+      )}
+    </span>
+  );
+}
+
+// ─── Chat message renderers ───────────────────────────────────────────────────
+function ChatEnglishWord({ msg, onSave, savedWords, onWordTap }) {
+  const d = msg.data;
+  if (!d) return null;
+  const isSaved = savedWords.some(w => w.word?.toLowerCase() === d.word?.toLowerCase());
+  return (
+    <div className="bg-white rounded-2xl rounded-tl-sm border border-slate-200 shadow-sm p-4 space-y-3 animate-in fade-in">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-xl font-black text-slate-800">{d.word}</span>
+            <span className="text-sm text-slate-400 font-mono">{d.phonetic}</span>
+            <span className="text-xs text-indigo-500 italic font-medium">{getShortPOS(d.partOfSpeech)}</span>
+          </div>
+          <p className="text-indigo-700 font-bold mt-1">{d.thaiTranslation}</p>
+        </div>
+        <button onClick={() => playAudio(d.word)} className="p-2 text-indigo-400 hover:bg-indigo-50 rounded-xl flex-none">
+          <Volume2 className="w-4 h-4" />
+        </button>
+      </div>
+      {d.examples?.length > 0 && (
+        <div className="space-y-2 pt-2 border-t border-slate-100">
+          {d.examples.map((ex, i) => (
+            <div key={i} className="space-y-0.5">
+              <p className="text-sm text-slate-700"><TappableText text={ex.en?.replace(/<\/?b>/gi, '')} onWordTap={onWordTap} /></p>
+              <p className="text-xs text-slate-400">{ex.th}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center justify-between pt-1">
+        {msg.autoSaved ? (
+          <span className="text-xs text-green-600 font-semibold flex items-center gap-1"><CheckCircle className="w-3.5 h-3.5" /> Saved automatically</span>
+        ) : isSaved ? (
+          <span className="text-xs text-slate-400 flex items-center gap-1"><BookmarkCheck className="w-3.5 h-3.5" /> Already in My Vocabs</span>
+        ) : (
+          <button onClick={() => onSave(d)} className="text-xs text-indigo-600 font-semibold flex items-center gap-1 hover:underline">
+            <Bookmark className="w-3.5 h-3.5" /> Save to My Vocabs
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChatGrammarCheck({ msg, onWordTap }) {
+  const d = msg.data;
+  if (!d) return null;
+  return (
+    <div className="bg-white rounded-2xl rounded-tl-sm border border-slate-200 shadow-sm p-4 space-y-3 animate-in fade-in">
+      {d.isCorrect ? (
+        <div className="flex items-center gap-2 text-green-600 font-bold text-sm">
+          <CheckCircle className="w-4 h-4" /> Looks correct!
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-amber-600 font-bold text-sm">
+          <AlertCircle className="w-4 h-4" /> Grammar corrected
+        </div>
+      )}
+      <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+        <p className="text-xs text-slate-400 mb-1 font-medium uppercase tracking-wide">Corrected</p>
+        <p className="text-slate-800 font-medium text-sm leading-relaxed">
+          <TappableText text={d.corrected} onWordTap={onWordTap} />
+        </p>
+      </div>
+      {d.corrections?.length > 0 && (
+        <div className="space-y-2">
+          {d.corrections.map((c, i) => (
+            <div key={i} className="text-xs text-slate-500 bg-amber-50 rounded-lg p-2.5 border border-amber-100">
+              <span className="line-through text-red-400 mr-2">{c.original}</span>
+              <span className="text-green-600 font-semibold mr-2">→ {c.corrected}</span>
+              <span className="text-slate-400">{c.explanation}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {d.thaiTranslation && (
+        <div className="pt-2 border-t border-slate-100">
+          <p className="text-xs text-slate-400 mb-1">Thai</p>
+          <p className="text-sm text-slate-600">{d.thaiTranslation}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChatThaiToEnglish({ msg, onWordTap }) {
+  const d = msg.data;
+  if (!d) return null;
+  return (
+    <div className="bg-white rounded-2xl rounded-tl-sm border border-slate-200 shadow-sm p-4 space-y-3 animate-in fade-in">
+      <p className="text-xs text-slate-400 font-medium">Translation · {msg.original}</p>
+      <div className="space-y-2">
+        <div className="bg-indigo-50 rounded-xl p-3 border border-indigo-100">
+          <p className="text-xs font-bold text-indigo-500 mb-1">🎩 Formal</p>
+          <p className="text-sm text-slate-800 font-medium leading-relaxed">
+            <TappableText text={d.formal?.english} onWordTap={onWordTap} />
+          </p>
+          {d.formal?.note && <p className="text-xs text-slate-400 mt-1">{d.formal.note}</p>}
+        </div>
+        <div className="bg-green-50 rounded-xl p-3 border border-green-100">
+          <p className="text-xs font-bold text-green-600 mb-1">😊 Casual</p>
+          <p className="text-sm text-slate-800 font-medium leading-relaxed">
+            <TappableText text={d.casual?.english} onWordTap={onWordTap} />
+          </p>
+          {d.casual?.note && <p className="text-xs text-slate-400 mt-1">{d.casual.note}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChatThaiWord({ msg, onWordTap }) {
+  const d = msg.data;
+  if (!d) return null;
+  return (
+    <div className="bg-white rounded-2xl rounded-tl-sm border border-slate-200 shadow-sm p-4 space-y-2 animate-in fade-in">
+      <div className="flex items-baseline gap-2 flex-wrap">
+        <span className="text-lg font-black text-slate-800">{msg.original}</span>
+        <span className="text-slate-400">→</span>
+        <span className="text-lg font-black text-indigo-600">{d.english}</span>
+        <span className="text-sm text-slate-400 font-mono">{d.phonetic}</span>
+        <span className="text-xs text-indigo-500 italic">{getShortPOS(d.partOfSpeech)}</span>
+      </div>
+      {d.examples?.length > 0 && (
+        <div className="space-y-1.5 pt-2 border-t border-slate-100">
+          {d.examples.map((ex, i) => (
+            <div key={i}>
+              <p className="text-xs text-slate-400">{ex.th}</p>
+              <p className="text-sm text-slate-700"><TappableText text={ex.en} onWordTap={onWordTap} /></p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssistantChatMessage({ msg, onWordTap, onSave, savedWords }) {
+  if (msg.type === 'error') return (
+    <div className="bg-red-50 text-red-600 rounded-2xl rounded-tl-sm border border-red-100 px-4 py-3 text-sm animate-in fade-in">
+      <AlertCircle className="w-4 h-4 inline mr-1.5" />{msg.content}
+    </div>
+  );
+  if (msg.type === 'english_word')    return <ChatEnglishWord    msg={msg} onSave={onSave} savedWords={savedWords} onWordTap={onWordTap} />;
+  if (msg.type === 'english_sentence') return <ChatGrammarCheck   msg={msg} onWordTap={onWordTap} />;
+  if (msg.type === 'thai_sentence')   return <ChatThaiToEnglish  msg={msg} onWordTap={onWordTap} />;
+  if (msg.type === 'thai_word')       return <ChatThaiWord        msg={msg} onWordTap={onWordTap} />;
+  return null;
+}
+
+// ─── FindView (chat-style) ────────────────────────────────────────────────────
 function FindView({ onSave, words, focusTrigger }) {
-  const [queryText, setQueryText]       = useState('');
+  const [messages, setMessages]         = useState([]);
+  const [input, setInput]               = useState('');
   const [loading, setLoading]           = useState(false);
-  const [result, setResult]             = useState(null);
-  const [error, setError]               = useState(null);
-  const [expandedId, setExpandedId]     = useState(null);
-  const [suggestions, setSuggestions]   = useState([]);
-  const [showSugs, setShowSugs]         = useState(false);
-  const [activeSug, setActiveSug]       = useState(-1);
-  const inputRef   = useRef(null);
-  const sugTimer   = useRef(null);
-  const wrapperRef = useRef(null);
+  const [tappedWord, setTappedWord]     = useState(null);
+  const [popupData, setPopupData]       = useState(null);
+  const [popupLoading, setPopupLoading] = useState(false);
+  const inputRef = useRef(null);
+  const bottomRef = useRef(null);
 
   useEffect(() => {
     const t = setTimeout(() => inputRef.current?.focus(), 50);
     return () => clearTimeout(t);
-  }, [result, focusTrigger]);
+  }, [focusTrigger]);
 
-  // Close suggestions when clicking outside
   useEffect(() => {
-    const handler = (e) => { if (!wrapperRef.current?.contains(e.target)) setShowSugs(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, loading]);
 
-  const fetchSuggestions = (q) => {
-    clearTimeout(sugTimer.current);
-    if (!q.trim() || q.length < 1) { setSuggestions([]); setShowSugs(false); return; }
-    sugTimer.current = setTimeout(async () => {
-      try {
-        const res  = await fetch(`${API_BASE}/api/suggest?q=${encodeURIComponent(q)}`);
-        const data = await res.json();
-        setSuggestions(data);
-        setShowSugs(data.length > 0);
-        setActiveSug(-1);
-      } catch { /* ignore */ }
-    }, 150);
+  const detectType = (text) => {
+    const t = text.trim();
+    const hasThai = /[\u0E00-\u0E7F]/.test(t);
+    const isPhrase = t.split(/\s+/).filter(Boolean).length > 1;
+    if (hasThai) return isPhrase ? 'thai_sentence' : 'thai_word';
+    return isPhrase ? 'english_sentence' : 'english_word';
   };
 
-  const handleSearch = async (e, directWord = null) => {
-    if (e) e.preventDefault();
-    const word = directWord || queryText;
-    if (!word.trim()) return;
-    setShowSugs(false);
-    setSuggestions([]);
-    setLoading(true); setError(null); setResult(null);
-
-    const sys = `You are an English-Thai dictionary. Return ONLY a valid JSON object:
-    {
-      "word": "string",
-      "phonetic": "string (e.g. /wɜːrd/)",
-      "partOfSpeech": "string",
-      "thaiTranslation": "string (short Thai meaning)",
-      "examples": [
-        {"en": "string (wrap the word in <b> tags)", "th": "string"},
-        {"en": "string (wrap the word in <b> tags)", "th": "string"}
-      ]
-    }
-    Provide exactly 2 examples. If invalid, return {"error": "Invalid word"}.`;
+  const handleSend = async (text = input.trim()) => {
+    if (!text || loading) return;
+    setInput('');
+    const type = detectType(text);
+    setMessages(prev => [...prev, { id: Date.now(), role: 'user', content: text }]);
+    setLoading(true);
 
     try {
-      const key = word.trim().toLowerCase();
+      let result;
 
-      // Check global cache first
-      const { found } = await api.checkCache([key]);
-      let data = found[key] || null;
-
-      if (!data) {
-        // Check vocab_bank — only look up words that exist in our list
-        const sugRes = await fetch(`${API_BASE}/api/suggest?q=${encodeURIComponent(key)}`);
-        const sugs   = await sugRes.json();
-        const inBank = sugs.some(s => s.word.toLowerCase() === key);
-        if (!inBank) {
-          setError('Word not in vocabulary list. Try another word.');
-          setLoading(false);
-          return;
+      if (type === 'english_word') {
+        const key = text.toLowerCase();
+        const { found } = await api.checkCache([key]);
+        let data = found[key] || null;
+        if (!data) {
+          const sys = `You are an English-Thai dictionary. Return ONLY valid JSON: {"word":"string","phonetic":"string","partOfSpeech":"string","thaiTranslation":"string","examples":[{"en":"string (wrap word in <b> tags)","th":"string"},{"en":"string (wrap word in <b> tags)","th":"string"}]}`;
+          data = await callGeminiJSON(sys, `Dictionary entry for: ${text}`);
+          if (data && !data.error) api.saveCache([data]);
         }
-        data = await callGeminiJSON(sys, `Dictionary details for: "${word.trim()}"`);
-        if (!data.error) api.saveCache([data]);
+        if (data && !data.error) {
+          const alreadySaved = words.some(w => w.word?.toLowerCase() === data.word?.toLowerCase());
+          if (!alreadySaved) onSave(data);
+          result = { type: 'english_word', data, autoSaved: !alreadySaved };
+        } else {
+          result = { type: 'error', content: 'Word not found. Please try another.' };
+        }
+
+      } else if (type === 'english_sentence') {
+        const sys = `You are an English grammar expert. Return ONLY valid JSON: {"corrected":"string","isCorrect":boolean,"corrections":[{"original":"string","corrected":"string","explanation":"string"}],"thaiTranslation":"string"}`;
+        const data = await callGeminiJSON(sys, `Check grammar and translate to Thai: "${text}"`);
+        result = { type: 'english_sentence', data, original: text };
+
+      } else if (type === 'thai_sentence') {
+        const sys = `You are a Thai-English translator. Return ONLY valid JSON: {"formal":{"english":"string","note":"string"},"casual":{"english":"string","note":"string"}}`;
+        const data = await callGeminiJSON(sys, `Translate this Thai sentence to English with formal and casual tones: "${text}"`);
+        result = { type: 'thai_sentence', data, original: text };
+
+      } else { // thai_word
+        const sys = `You are a Thai-English dictionary. Return ONLY valid JSON: {"english":"string","phonetic":"string","partOfSpeech":"string","examples":[{"th":"string","en":"string"},{"th":"string","en":"string"}]}`;
+        const data = await callGeminiJSON(sys, `Translate Thai word to English: "${text}"`);
+        result = { type: 'thai_word', data, original: text };
       }
 
-      if (data.error) {
-        setError('Word not found. Please try another word.');
-      } else {
-        setResult(data);
-        onSave(data);
-        if (!directWord) setQueryText('');
+      setMessages(prev => [...prev, { id: Date.now() + 1, role: 'assistant', ...result }]);
+    } catch (e) {
+      console.error(e);
+      setMessages(prev => [...prev, { id: Date.now() + 1, role: 'assistant', type: 'error', content: 'Connection error. Please try again.' }]);
+    }
+    setLoading(false);
+  };
+
+  const handleWordTap = async (word) => {
+    if (tappedWord === word) { setTappedWord(null); setPopupData(null); return; }
+    setTappedWord(word);
+    setPopupData(null);
+    setPopupLoading(true);
+    try {
+      const { found } = await api.checkCache([word.toLowerCase()]);
+      let data = found[word.toLowerCase()];
+      if (!data) {
+        const sys = `You are an English-Thai dictionary. Return ONLY valid JSON: {"word":"string","phonetic":"string","partOfSpeech":"string","thaiTranslation":"string"}`;
+        data = await callGeminiJSON(sys, `Quick translation for: ${word}`);
       }
-    } catch {
-      setError('Connection error. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+      setPopupData(data);
+    } catch(e) {}
+    setPopupLoading(false);
   };
 
-  const handleInputChange = (e) => {
-    const val = e.target.value;
-    setQueryText(val);
-    if (!val.trim()) { setResult(null); setError(null); setSuggestions([]); setShowSugs(false); return; }
-    fetchSuggestions(val);
-  };
-
-  const handleKeyDown = (e) => {
-    if (!showSugs || !suggestions.length) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveSug(i => Math.min(i + 1, suggestions.length - 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveSug(i => Math.max(i - 1, -1)); }
-    else if (e.key === 'Escape') { setShowSugs(false); }
-    else if (e.key === 'Enter' && activeSug >= 0) {
-      e.preventDefault();
-      const w = suggestions[activeSug].word;
-      setQueryText(w);
-      setShowSugs(false);
-      handleSearch(null, w);
-    }
-  };
-
-  const pickSuggestion = (w) => {
-    setQueryText(w);
-    setShowSugs(false);
-    setSuggestions([]);
-    handleSearch(null, w);
-  };
+  const examples = ['resilient', 'I can going to store', 'สวัสดีตอนเช้า', 'รัก'];
 
   return (
-    <div className="w-full flex-1 flex flex-col pt-2 animate-in fade-in">
-      {/* Search bar */}
-      <div className="w-full max-w-xl mx-auto mb-6" ref={wrapperRef}>
-        <form onSubmit={handleSearch} className="relative">
-          <div className="shadow-md rounded-2xl overflow-hidden bg-white border-2 border-slate-100 hover:border-indigo-300 focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-50 transition-all">
-            <input
-              ref={inputRef}
-              type="text"
-              value={queryText}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              onFocus={() => suggestions.length > 0 && setShowSugs(true)}
-              placeholder="Enter vocabulary."
-              className="w-full py-3.5 pl-5 pr-14 text-lg outline-none bg-transparent"
-              autoComplete="off"
-            />
-            <button
-              type="submit"
-              disabled={loading || !queryText.trim()}
-              className="absolute right-2 top-2 bottom-2 bg-indigo-600 text-white px-4 rounded-xl hover:bg-indigo-700 disabled:bg-indigo-300 transition-colors shadow-sm flex items-center justify-center"
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
-            </button>
-          </div>
-
-          {/* Suggestions dropdown */}
-          {showSugs && suggestions.length > 0 && (
-            <div className="absolute top-full left-0 right-0 bg-white border border-slate-200 rounded-2xl shadow-xl mt-1.5 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
-              {suggestions.map((s, i) => (
-                <button
-                  key={s.word}
-                  type="button"
-                  onMouseDown={(e) => { e.preventDefault(); pickSuggestion(s.word); }}
-                  className={`w-full text-left px-4 py-2.5 flex items-center gap-3 transition-colors ${
-                    i === activeSug ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-50'
-                  } ${i !== 0 ? 'border-t border-slate-100' : ''}`}
-                >
-                  <Search className="w-3.5 h-3.5 text-slate-300 flex-none" />
-                  <span className="font-medium capitalize">{s.word}</span>
-                  {s.pos && <span className="text-xs text-slate-400 italic ml-auto">{s.pos}</span>}
+    <div className="flex flex-col h-full max-w-xl mx-auto w-full animate-in fade-in">
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto space-y-4 pb-4 min-h-0">
+        {messages.length === 0 && (
+          <div className="text-center py-12 px-4">
+            <div className="w-14 h-14 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Search className="w-7 h-7 text-indigo-500" />
+            </div>
+            <p className="font-bold text-slate-700 mb-1">Ask anything</p>
+            <p className="text-sm text-slate-400 mb-5">English word · sentence · Thai text</p>
+            <div className="grid grid-cols-2 gap-2 text-left">
+              {examples.map(ex => (
+                <button key={ex} onClick={() => handleSend(ex)}
+                  className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 text-left transition-colors truncate">
+                  "{ex}"
                 </button>
               ))}
             </div>
-          )}
-        </form>
-
-        {error && (
-          <div className="bg-red-50 text-red-600 p-3 text-sm rounded-xl flex items-center gap-2 mt-4 animate-in fade-in">
-            <AlertCircle className="w-4 h-4" /> {error}
           </div>
         )}
+
+        {messages.map(msg => (
+          <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            {msg.role === 'user' ? (
+              <div className="max-w-[80%] bg-indigo-600 text-white px-4 py-2.5 rounded-2xl rounded-tr-sm text-sm font-medium shadow-sm">
+                {msg.content}
+              </div>
+            ) : (
+              <div className="max-w-[94%] w-full">
+                <AssistantChatMessage msg={msg} onWordTap={handleWordTap} onSave={onSave} savedWords={words} />
+              </div>
+            )}
+          </div>
+        ))}
+
+        {loading && (
+          <div className="flex justify-start">
+            <div className="bg-white border border-slate-200 rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-2 shadow-sm">
+              <div className="flex gap-1">
+                {[0,1,2].map(i => (
+                  <span key={i} className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
       </div>
 
-      {/* Result */}
-      {result && (
-        <div className="animate-in fade-in slide-in-from-bottom-4 w-full max-w-xl mx-auto">
-          <WordCard result={result} />
+      {/* Word tap popup */}
+      {tappedWord && (
+        <div className="fixed bottom-20 left-3 right-3 max-w-xl mx-auto bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 z-30 animate-in slide-in-from-bottom-4">
+          <div className="flex justify-between items-start mb-2">
+            <div className="flex items-center gap-2">
+              <p className="font-black text-lg text-slate-800">{tappedWord}</p>
+              <button onClick={() => playAudio(tappedWord)} className="p-1 text-indigo-400 hover:text-indigo-600">
+                <Volume2 className="w-4 h-4" />
+              </button>
+            </div>
+            <button onClick={() => { setTappedWord(null); setPopupData(null); }} className="p-1 text-slate-400 hover:text-slate-600">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          {popupLoading ? (
+            <div className="flex items-center gap-2 py-1"><Loader2 className="w-4 h-4 animate-spin text-indigo-500" /><span className="text-sm text-slate-400">Translating...</span></div>
+          ) : popupData ? (
+            <>
+              <p className="text-xs text-slate-400 mb-1">{popupData.phonetic} · <span className="italic">{getShortPOS(popupData.partOfSpeech)}</span></p>
+              <p className="font-bold text-indigo-700 text-base">{popupData.thaiTranslation}</p>
+              <div className="flex gap-2 mt-3">
+                <button onClick={() => { handleSend(tappedWord); setTappedWord(null); setPopupData(null); }}
+                  className="flex-1 py-2 border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50">
+                  Full lookup →
+                </button>
+                <button onClick={() => { onSave(popupData); setTappedWord(null); setPopupData(null); }}
+                  className="flex-1 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700">
+                  + Save
+                </button>
+              </div>
+            </>
+          ) : null}
         </div>
       )}
 
-      {/* Recent searches */}
-      {!result && !loading && words.length > 0 && (
-        <div className="w-full max-w-xl mx-auto animate-in fade-in slide-in-from-bottom-4">
-          <div className="flex items-center gap-2 mb-4 justify-center">
-            <div className="h-px bg-slate-200 flex-1" />
-            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 px-2">
-              <Clock className="w-3.5 h-3.5" /> Recent Searches
-            </h3>
-            <div className="h-px bg-slate-200 flex-1" />
-          </div>
-
-          <div className="space-y-2.5">
-            {words.slice(0, 10).map(word => {
-              const isExpanded = expandedId === word.id;
-              return (
-                <div key={word.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                  <div
-                    className="p-3.5 cursor-pointer flex justify-between items-center hover:bg-slate-50 transition-colors"
-                    onClick={() => setExpandedId(isExpanded ? null : word.id)}
-                  >
-                    <div className="flex-1 overflow-hidden pr-2">
-                      <div className="font-bold text-base text-slate-800 capitalize flex items-baseline gap-2 mb-0.5 truncate">
-                        {word.word}
-                        <span className="text-xs text-slate-400 font-mono font-normal">{word.phonetic}</span>
-                      </div>
-                      <div className="text-slate-600 text-sm truncate">
-                        <span className="text-indigo-500 italic font-medium mr-1.5">{getShortPOS(word.partOfSpeech)}</span>
-                        {word.thaiTranslation}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button onClick={e => { e.stopPropagation(); playAudio(word.word); }} className="p-1.5 text-indigo-500 hover:bg-indigo-100 rounded-lg">
-                        <Volume2 className="w-4 h-4" />
-                      </button>
-                      <ChevronDown className={`w-4 h-4 text-slate-300 transition-transform ${isExpanded ? 'rotate-180 text-indigo-400' : ''}`} />
-                    </div>
-                  </div>
-                  {isExpanded && (
-                    <div className="p-3 bg-slate-50 border-t border-slate-100 animate-in slide-in-from-top-1 fade-in">
-                      <WordCard result={word} hideHeader />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+      {/* Input */}
+      <div className="flex-none pt-2">
+        <div className="flex gap-2 bg-white border-2 border-slate-200 focus-within:border-indigo-400 rounded-2xl p-2 shadow-sm transition-colors">
+          <input
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            placeholder="English word, sentence, or Thai text..."
+            className="flex-1 px-2 py-1.5 text-sm outline-none bg-transparent text-slate-800 placeholder-slate-400"
+          />
+          <button onClick={() => handleSend()} disabled={!input.trim() || loading}
+            className="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center disabled:bg-indigo-300 flex-none transition-colors shadow-sm">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
