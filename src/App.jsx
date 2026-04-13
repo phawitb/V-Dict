@@ -1717,9 +1717,7 @@ function SRSReview({ words, onUpdateWord, onNext, forceAll }) {
               {current.examples?.[0] && (
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-center">
                   <p className="text-sm text-slate-600 leading-relaxed">
-                    "{current.examples[0].en
-                      .replace(/<\/?b>/gi, '')
-                      .replace(new RegExp(`\\b${current.word}\\b`, 'gi'), '______')}"
+                    {'"'}<SentenceWithBlank sentence={blankWord(current.examples[0].en.replace(/<\/?b>/gi, ''), current.word).sentence} />{'"'}
                   </p>
                   <p className="text-xs text-slate-400 mt-2"><HighlightedText text={current.examples[0].th} /></p>
                 </div>
