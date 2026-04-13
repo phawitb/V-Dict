@@ -2718,6 +2718,32 @@ function MatchingGame({ words, onNext }) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// ─── Blank a word in a sentence (exact match first, then prefix fallback) ────
+function blankWord(plain, word) {
+  const exact = plain.replace(new RegExp(`\\b${word}\\b`, 'gi'), '________');
+  if (exact !== plain) return exact;
+  // fallback: match word stem + any suffix (e.g. accuse → accused, accusing)
+  return plain.replace(new RegExp(`\\b${word}\\w*`, 'gi'), '________');
+}
+
+// ─── Render sentence with styled blank ───────────────────────────────────────
+function SentenceWithBlank({ sentence }) {
+  const parts = sentence.split('________');
+  if (parts.length === 1) return <span>{sentence}</span>;
+  return (
+    <>
+      {parts.map((part, i) => (
+        <React.Fragment key={i}>
+          {part}
+          {i < parts.length - 1 && (
+            <span className="inline-block border-b-2 border-indigo-500 text-indigo-500 font-bold px-2 mx-0.5 leading-none">____</span>
+          )}
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
+
 // MultipleChoiceGame
 // ═════════════════════════════════════════════════════════════════════════════
 function MultipleChoiceGame({ words, onNext, onWordResult }) {
@@ -2736,7 +2762,7 @@ function MultipleChoiceGame({ words, onNext, onWordResult }) {
     setQs(picked.map(tw => {
       const exHtml  = tw.examples?.[0]?.en || `This is a <b>${tw.word}</b>.`;
       const plain   = exHtml.replace(/<\/?b>/gi, '');
-      const blanked = plain.replace(new RegExp(`\\b${tw.word}\\b`, 'gi'), '________');
+      const blanked = blankWord(plain, tw.word);
       // options are lowercase
       const opts    = [
         tw.word.toLowerCase(),
@@ -2785,7 +2811,7 @@ function MultipleChoiceGame({ words, onNext, onWordResult }) {
         <div className="bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-full text-xs font-bold">Q {cidx + 1} / {questions.length}</div>
       </div>
       <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 mb-6 text-center">
-        <p className="text-base md:text-lg text-slate-800 font-medium leading-relaxed">"{q.sentence}"</p>
+        <p className="text-base md:text-lg text-slate-800 font-medium leading-relaxed">"<SentenceWithBlank sentence={q.sentence} />"</p>
         <div className="mt-3 h-7 flex items-center justify-center">
           {hintShown !== cidx ? (
             <button type="button" onClick={() => setHintShown(cidx)} className="flex items-center gap-1 text-xs font-medium text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg">
@@ -2836,7 +2862,7 @@ function TypingGame({ words, onNext, onWordResult }) {
     setQs(picked.map(tw => {
       const exHtml  = tw.examples?.[0]?.en || `This is a <b>${tw.word}</b>.`;
       const plain   = exHtml.replace(/<\/?b>/gi, '');
-      const blanked = plain.replace(new RegExp(`\\b${tw.word}\\b`, 'gi'), '________');
+      const blanked = blankWord(plain, tw.word);
       return { tw, sentence: blanked };
     }));
     setCidx(0); setScore(0); setShowRes(false); setInput(''); setFb(null); setHint(false); setShowNext(false);
@@ -2878,7 +2904,7 @@ function TypingGame({ words, onNext, onWordResult }) {
         <div className="bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-full text-xs font-bold">Q {cidx + 1} / {questions.length}</div>
       </div>
       <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 mb-6 text-center">
-        <p className="text-base md:text-lg text-slate-800 font-medium leading-relaxed">"{q.sentence}"</p>
+        <p className="text-base md:text-lg text-slate-800 font-medium leading-relaxed">"<SentenceWithBlank sentence={q.sentence} />"</p>
         <div className="mt-4 h-8 flex items-center justify-center">
           {!hint ? (
             <button type="button" onClick={() => setHint(true)} className="flex items-center gap-1 text-xs font-medium text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg">
