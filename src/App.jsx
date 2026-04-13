@@ -3,7 +3,7 @@ import {
   Search, Volume2, Trash2, BookOpen, Layers, Edit3, Type, CheckCircle,
   RefreshCw, AlertCircle, Loader2, Sun, Book, Lightbulb, Clock, ChevronDown,
   User, Trophy, Delete, Sparkles, Flame, Brain, RotateCcw, LogOut,
-  Settings, Shield, Eye, EyeOff, Plus, X, Bookmark, BookmarkCheck,
+  Settings, Shield, Eye, EyeOff, Plus, X, Bookmark, BookmarkCheck, Copy,
 } from 'lucide-react';
 import { GoogleLogin, googleLogout } from '@react-oauth/google';
 
@@ -281,7 +281,7 @@ export default function App() {
 
       {/* Main — top padding compensates for fixed header (≈52px) + safe-area */}
       <main className="max-w-4xl mx-auto p-4 w-full flex-1 flex flex-col" style={{ paddingTop: 'calc(52px + env(safe-area-inset-top, 0px) + 1rem)' }}>
-        {activeTab === 'find'     && <FindView    onSave={saveWordToDb} words={words} focusTrigger={findFocusTrigger} />}
+        {activeTab === 'find'     && <FindView    onSave={saveWordToDb} words={words} focusTrigger={findFocusTrigger} userId={user?.sub} />}
         {activeTab === 'vocabs'   && <MyVocabsView words={words} onDelete={deleteWordFromDb} />}
         {activeTab === 'learning' && <LearningView words={words} onUpdateWord={updateWordInDb} onSaveWord={saveWordToDb} dueCount={dueCount} userId={user.sub} onTitleChange={setHeaderTitle} />}
         {activeTab === 'wotd'     && <WordOfTheDayView onSave={saveWordToDb} savedWords={words} user={user} onUpdateWord={updateWordInDb} />}
@@ -432,7 +432,13 @@ function ChatEnglishWord({ msg, onSave, savedWords, onWordTap }) {
 
 function ChatGrammarCheck({ msg, onWordTap }) {
   const d = msg.data;
+  const [copied, setCopied] = useState(false);
   if (!d) return null;
+  const handleCopy = () => {
+    navigator.clipboard.writeText(d.corrected || '');
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
   return (
     <div className="bg-white rounded-2xl rounded-tl-sm border border-slate-200 shadow-sm p-4 space-y-3 animate-in fade-in">
       {d.isCorrect ? (
@@ -445,7 +451,12 @@ function ChatGrammarCheck({ msg, onWordTap }) {
         </div>
       )}
       <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-        <p className="text-xs text-slate-400 mb-1 font-medium uppercase tracking-wide">Corrected</p>
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">Corrected</p>
+          <button onClick={handleCopy} className="flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 font-medium">
+            {copied ? <><CheckCircle className="w-3 h-3" /> Copied</> : <><Copy className="w-3 h-3" /> Copy</>}
+          </button>
+        </div>
         <p className="text-slate-800 font-medium text-sm leading-relaxed">
           <TappableText text={d.corrected} onWordTap={onWordTap} />
         </p>
@@ -537,13 +548,29 @@ function AssistantChatMessage({ msg, onWordTap, onSave, savedWords }) {
 }
 
 // ─── FindView (chat-style) ────────────────────────────────────────────────────
-function FindView({ onSave, words, focusTrigger }) {
-  const [messages, setMessages]         = useState([]);
-  const [input, setInput]               = useState('');
-  const [loading, setLoading]           = useState(false);
-  const [tappedWord, setTappedWord]     = useState(null);
-  const [popupData, setPopupData]       = useState(null);
-  const [popupLoading, setPopupLoading] = useState(false);
+const CHAT_HISTORY_KEY = (uid) => `find_chat_${uid || 'guest'}`;
+const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
+function loadChatHistory(uid) {
+  try {
+    const raw = localStorage.getItem(CHAT_HISTORY_KEY(uid));
+    if (!raw) return [];
+    const { messages, savedAt } = JSON.parse(raw);
+    if (Date.now() - savedAt > THREE_DAYS_MS) return [];
+    return messages || [];
+  } catch { return []; }
+}
+
+function saveChatHistory(uid, messages) {
+  try {
+    localStorage.setItem(CHAT_HISTORY_KEY(uid), JSON.stringify({ messages, savedAt: Date.now() }));
+  } catch {}
+}
+
+function FindView({ onSave, words, focusTrigger, userId }) {
+  const [messages, setMessages] = useState(() => loadChatHistory(userId));
+  const [input, setInput]       = useState('');
+  const [loading, setLoading]   = useState(false);
   const inputRef = useRef(null);
   const bottomRef = useRef(null);
 
@@ -555,6 +582,10 @@ function FindView({ onSave, words, focusTrigger }) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
+
+  useEffect(() => {
+    saveChatHistory(userId, messages);
+  }, [messages, userId]);
 
   const detectType = (text) => {
     const t = text.trim();
@@ -615,21 +646,8 @@ function FindView({ onSave, words, focusTrigger }) {
     setLoading(false);
   };
 
-  const handleWordTap = async (word) => {
-    if (tappedWord === word) { setTappedWord(null); setPopupData(null); return; }
-    setTappedWord(word);
-    setPopupData(null);
-    setPopupLoading(true);
-    try {
-      const { found } = await api.checkCache([word.toLowerCase()]);
-      let data = found[word.toLowerCase()];
-      if (!data) {
-        const sys = `You are an English-Thai dictionary. Return ONLY valid JSON: {"word":"string","phonetic":"string","partOfSpeech":"string","thaiTranslation":"string"}`;
-        data = await callGeminiJSON(sys, `Quick translation for: ${word}`);
-      }
-      setPopupData(data);
-    } catch(e) {}
-    setPopupLoading(false);
+  const handleWordTap = (word) => {
+    handleSend(word);
   };
 
   const examples = ['resilient', 'I can going to store', 'สวัสดีตอนเช้า', 'รัก'];
@@ -683,41 +701,6 @@ function FindView({ onSave, words, focusTrigger }) {
         )}
         <div ref={bottomRef} />
       </div>
-
-      {/* Word tap popup */}
-      {tappedWord && (
-        <div className="fixed bottom-20 left-3 right-3 max-w-xl mx-auto bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 z-30 animate-in slide-in-from-bottom-4">
-          <div className="flex justify-between items-start mb-2">
-            <div className="flex items-center gap-2">
-              <p className="font-black text-lg text-slate-800">{tappedWord}</p>
-              <button onClick={() => playAudio(tappedWord)} className="p-1 text-indigo-400 hover:text-indigo-600">
-                <Volume2 className="w-4 h-4" />
-              </button>
-            </div>
-            <button onClick={() => { setTappedWord(null); setPopupData(null); }} className="p-1 text-slate-400 hover:text-slate-600">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          {popupLoading ? (
-            <div className="flex items-center gap-2 py-1"><Loader2 className="w-4 h-4 animate-spin text-indigo-500" /><span className="text-sm text-slate-400">Translating...</span></div>
-          ) : popupData ? (
-            <>
-              <p className="text-xs text-slate-400 mb-1">{popupData.phonetic} · <span className="italic">{getShortPOS(popupData.partOfSpeech)}</span></p>
-              <p className="font-bold text-indigo-700 text-base">{popupData.thaiTranslation}</p>
-              <div className="flex gap-2 mt-3">
-                <button onClick={() => { handleSend(tappedWord); setTappedWord(null); setPopupData(null); }}
-                  className="flex-1 py-2 border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50">
-                  Full lookup →
-                </button>
-                <button onClick={() => { onSave(popupData); setTappedWord(null); setPopupData(null); }}
-                  className="flex-1 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700">
-                  + Save
-                </button>
-              </div>
-            </>
-          ) : null}
-        </div>
-      )}
 
       {/* Input */}
       <div className="flex-none pt-2">
