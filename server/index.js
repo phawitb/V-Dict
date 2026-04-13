@@ -613,14 +613,39 @@ app.get('/api/lesson-progress', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/lesson-progress/today?userId=  → groups done today across all lessons
+app.get('/api/lesson-progress/today', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) return res.json({ groups: [] });
+    const today = new Date().toISOString().split('T')[0];
+    const docs = await lessonProgressCol.find({ userId, date: today }).sort({ updatedAt: -1 }).toArray();
+    res.json({ groups: docs.map(d => ({ lessonKey: d.lessonKey, groupIdx: d.groupIdx, level: d.level, words: d.words || [] })) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/lesson-progress/suggest?userId=  → one random completed group (not today)
+app.get('/api/lesson-progress/suggest', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) return res.json({ group: null });
+    const today = new Date().toISOString().split('T')[0];
+    const count = await lessonProgressCol.countDocuments({ userId, date: { $ne: today } });
+    if (count === 0) return res.json({ group: null });
+    const skip = Math.floor(Math.random() * count);
+    const doc  = await lessonProgressCol.findOne({ userId, date: { $ne: today } }, { skip });
+    res.json({ group: doc ? { lessonKey: doc.lessonKey, groupIdx: doc.groupIdx, level: doc.level, words: doc.words || [] } : null });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // POST /api/lesson-progress  → upsert one group's progress
 app.post('/api/lesson-progress', async (req, res) => {
   try {
-    const { userId, lessonKey, groupIdx, level, score, total, date } = req.body;
+    const { userId, lessonKey, groupIdx, level, score, total, date, words } = req.body;
     if (!userId || !lessonKey || groupIdx == null) return res.status(400).json({ error: 'Missing fields' });
     await lessonProgressCol.updateOne(
       { userId, lessonKey, groupIdx },
-      { $set: { level, score, total, date, updatedAt: Date.now() } },
+      { $set: { level, score, total, date, words: words || [], updatedAt: Date.now() } },
       { upsert: true },
     );
     res.json({ ok: true });
