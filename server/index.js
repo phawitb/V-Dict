@@ -707,8 +707,9 @@ app.get('/api/word-difficulty/recommend', async (req, res) => {
     const missing   = wordNames.filter(w => !foundSet.has(w));
     const cacheDocs = missing.length ? await wordCacheCol.find({ word: { $in: missing } }).toArray() : [];
 
-    // Preserve ranking order
-    const allDocs = [...savedDocs, ...cacheDocs];
+    // Preserve ranking order; run toClient on savedDocs so they have id field
+    const savedMapped = savedDocs.map(toClient);
+    const allDocs = [...savedMapped, ...cacheDocs];
     const ordered = wordNames.map(w => allDocs.find(d => d.word.toLowerCase() === w)).filter(Boolean);
 
     res.json({ words: ordered });

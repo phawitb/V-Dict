@@ -1674,7 +1674,8 @@ function SRSReview({ words, onUpdateWord, onNext, forceAll }) {
     if (busy) return;
     setBusy(true);
     try {
-      await onUpdateWord(current.id, { srs: calculateSRS(current.srs, quality) });
+      const wordId = current.id || current._id;
+      if (wordId) await onUpdateWord(wordId, { srs: calculateSRS(current.srs, quality) });
     } catch (e) { console.error(e); }
     setStats(s => ({ ...s, [statKey]: s[statKey] + 1 }));
     if (idx + 1 >= sessionWords.length) { setDone(true); }
